@@ -24,6 +24,9 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Content-Type for binary data when available.
 - `validateStatus` and `validateJson` utilities for safe response
   preparation, and `safeWrite` for handling stream backpressure.
+- `abstract Layer`: full routing, middleware, dispatch, error handling,
+  scoped onError, mounted routers with param support + sub-paths,
+  double-next protection, 404/405 distinction, recursive collectAllowedMethods
 
 ## [0.1.0] — 2026-03-23
 

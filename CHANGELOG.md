@@ -27,6 +27,7 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `abstract Layer`: full routing, middleware, dispatch, error handling,
   scoped onError, mounted routers with param support + sub-paths,
   double-next protection, 404/405 distinction, recursive collectAllowedMethods
+- `Router` class: a concrete Layer used to create mountable sub‑applications.
 
 ### Fixed
 

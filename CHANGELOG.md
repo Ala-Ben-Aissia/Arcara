@@ -22,6 +22,8 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   WEBP, BMP, TIFF, AVIF, HEIC, HEIF), HTML/SVG/CSS pattern detection for
   strings, and JSON detection for objects. Falls back to request
   Content-Type for binary data when available.
+- `validateStatus` and `validateJson` utilities for safe response
+  preparation, and `safeWrite` for handling stream backpressure.
 
 ## [0.1.0] — 2026-03-23
 

@@ -9,6 +9,15 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- compilePath converts a path pattern string into a RegExp and an
+  ordered list of param names. Trailing slashes are matched optionally,
+  and regex special characters are escaped.
+
+- matchRoute iterates the route table and returns a discriminated union:
+  - success: true → matched route + extracted params object <br/>
+  - success: false → code 404 (path not found) or 405 (path matched,
+    method did not) so callers can return the correct HTTP status
+
 - logger with colored terminal output (request, start, error with recursive
   cause chain and ArcaraError status display)
 

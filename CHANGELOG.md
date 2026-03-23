@@ -9,17 +9,19 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- compilePath converts a path pattern string into a RegExp and an
+- `Logger` with colored terminal output (request, start, error with recursive
+  cause chain and ArcaraError status display)
+- `compilePath` converts a path pattern string into a RegExp and an
   ordered list of param names. Trailing slashes are matched optionally,
   and regex special characters are escaped.
-
-- matchRoute iterates the route table and returns a discriminated union:
-  - success: true → matched route + extracted params object <br/>
+- `matchRoute` iterates the route table and returns a discriminated union:
+  - success: true → matched route + extracted params object
   - success: false → code 404 (path not found) or 405 (path matched,
     method did not) so callers can return the correct HTTP status
-
-- logger with colored terminal output (request, start, error with recursive
-  cause chain and ArcaraError status display)
+- `detectContentType` with magic byte sniffing for images (JPEG, PNG, GIF,
+  WEBP, BMP, TIFF, AVIF, HEIC, HEIF), HTML/SVG/CSS pattern detection for
+  strings, and JSON detection for objects. Falls back to request
+  Content-Type for binary data when available.
 
 ## [0.1.0] — 2026-03-23
 

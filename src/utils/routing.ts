@@ -11,41 +11,46 @@ function escapeRegex(str: string): string {
  * Compiles a path pattern string into a regex and an ordered list of
  * param names. Called once at route or child registration time.
  *
- * Named segments starting with ':' are captured as groups.
- * A trailing slash is always optional in the generated regex.
+ * @param path    - The path pattern, e.g. '/users/:id'
+ * @param prefix  - When true, the regex matches the pattern as a prefix
+ *                  rather than an exact path. Used for mounted child routers
+ *                  so that '/api' matches '/api/users/42', not just '/api'.
  *
- * @example
- * compilePath('/users/:id')
- * // → { regex: /^\/users\/([^/]+)\/?$/, paramNames: ['id'] }
+ * Exact mode  (prefix: false) — default, used for routes:
+ *   compilePath('/users/:id')
+ *   → { regex: /^\/users\/([^/]+)\/?$/, paramNames: ['id'] }
  *
- * compilePath('/orgs/:orgId/users/:userId')
- * // → { regex: /^\/orgs\/([^/]+)\/users\/([^/]+)\/?$/, paramNames: ['orgId', 'userId'] }
+ * Prefix mode (prefix: true)  — used for mounted child routers:
+ *   compilePath('/api', true)
+ *   → { regex: /^\/api(?:\/.*)?$/, paramNames: [] }
  *
- * compilePath('/health')
- * // → { regex: /^\/health\/?$/, paramNames: [] }
+ *   compilePath('/orgs/:orgId', true)
+ *   → { regex: /^\/orgs\/([^/]+)(?:\/.*)?$/, paramNames: ['orgId'] }
+ *
+ * The difference is only in the terminator:
+ *   exact  → \/?$          (optional trailing slash, then end)
+ *   prefix → (?:\/.*)?$    (optional slash + anything, then end)
  */
 export function compilePath<Params extends string = never>(
   path: string,
+  prefix = false,
 ): {
   regex: RegExp;
   paramNames: Params[];
 } {
   const paramNames: Params[] = [];
 
-  // Escape regex special characters except ':' (which we need for param detection)
-  const escapedPath = escapeRegex(path);
-
-  const regexStr = escapedPath
-    // Replace each :param segment with a capture group
+  const regexStr = escapeRegex(path)
     .replace(/:([^/]+)/g, (_, name: Params) => {
       paramNames.push(name);
       return '([^/]+)';
     })
-    // Escape forward slashes for the regex
     .replace(/\//g, '\\/');
 
+  const terminator = prefix ? '(?:\\/.*)?$' : '\\/?$';
+
   return {
-    regex: new RegExp(`^${regexStr}\\/?$`),
+    regex: new RegExp(`^${regexStr}${terminator}`),
     paramNames,
   };
 }

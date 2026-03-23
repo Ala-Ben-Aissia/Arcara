@@ -28,6 +28,11 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   scoped onError, mounted routers with param support + sub-paths,
   double-next protection, 404/405 distinction, recursive collectAllowedMethods
 
+### Fixed
+
+- `compilePath` now supports a `prefix` option, allowing regex matching for path prefixes.
+  This fixes issues when mounting child routers with optional parent paths.
+
 ## [0.1.0] — 2026-03-23
 
 ### Added

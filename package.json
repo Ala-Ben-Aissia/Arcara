@@ -1,0 +1,53 @@
+{
+  "name": "arcara",
+  "version": "0.1.0",
+  "description": "Zero-dependency Node.js HTTP framework. Type-safe routing, nested routers, and scoped error handling — built with modern TypeScript.",
+  "keywords": [
+    "node",
+    "http",
+    "framework",
+    "typescript",
+    "router",
+    "zero-dependency",
+    "backend",
+    "server",
+    "middleware",
+    "esm"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit --watch",
+    "play": "tsx watch src/playground/app.ts",
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "MIT",
+  "author": "Ala Ben Aissia",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ala-Ben-Aissia/arcara.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ala-Ben-Aissia/arcara/issues"
+  },
+  "homepage": "https://github.com/Ala-Ben-Aissia/arcara#readme"
+}

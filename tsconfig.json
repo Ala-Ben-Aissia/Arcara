@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    // ── Output ──────────────────────────────────────────────────────────────
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true, // emit .d.ts files for consumers
+    "declarationMap": true, // source maps for .d.ts (IDE go-to-definition)
+    "sourceMap": true, // source maps for debugging
+
+    // ── Module system ────────────────────────────────────────────────────────
+    "module": "NodeNext", // Node 22 native ESM — requires .js extensions on imports
+    "moduleResolution": "NodeNext",
+    "target": "ES2023", // Node 22 supports everything in ES2023
+
+    // ── Type safety ──────────────────────────────────────────────────────────
+    "strict": true, // enables all strict checks as a baseline
+    "noUncheckedIndexedAccess": true, // arr[0] is T | undefined, not T
+    "noImplicitOverride": true, // must explicitly mark overridden methods
+    "noImplicitReturns": true, // all code paths must return a value
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true, // undefined !== missing property
+
+    // ── Interop ──────────────────────────────────────────────────────────────
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // ── Output hygiene ───────────────────────────────────────────────────────
+    "removeComments": false, // keep JSDoc in dist for IDE tooltips
+    "skipLibCheck": true // don't type-check node_modules .d.ts files
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "src/playground"]
+}

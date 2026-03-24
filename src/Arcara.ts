@@ -294,6 +294,7 @@ export class Arcara extends Layer {
    *   .get('/', (req, res) => res.json({ ok: true }))
    *   .listen(3000);
    */
+  listen(port: number): this;
   listen(port: number, host = '0.0.0.0', callback?: () => void): this {
     this.server.listen(port, host, () => {
       logger.start(host, port);

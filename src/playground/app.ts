@@ -39,15 +39,6 @@ const requireAuth: Middleware = (req, res, next) => {
 // ── Root app ─────────────────────────────────────────────────────────────────
 
 const app = new Arcara();
-const app2 = new Arcara();
-
-app2.listen(4000, 'localhost', () => {
-  console.log('Second Arcara instance running on http://localhost:4000');
-});
-
-app2.get('/hello', (_req, res) => {
-  res.json({ message: 'Hello from the second Arcara instance!' });
-});
 
 // Global middleware — stamps every request with a correlation ID
 app.use((req, _res, next) => {
@@ -158,19 +149,4 @@ app.post('/form', (req, res) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-app.listen(3000, '0.0.0.0', () => {
-  console.log('\nArcara test server running on http://localhost:3000\n');
-  console.log('Routes:');
-  console.log('  GET    /');
-  console.log('  GET    /api/users          ?role=admin|user');
-  console.log('  GET    /api/users/:id');
-  console.log('  POST   /api/users          x-api-key: secret');
-  console.log('  PUT    /api/users/:id      x-api-key: secret');
-  console.log('  DELETE /api/users/:id      x-api-key: secret');
-  console.log('  POST   /form               application/x-www-form-urlencoded');
-  console.log('  GET    /debug/crash        → 500');
-  console.log('  GET    /debug/bad-request  → 400');
-  console.log('  GET    /debug/double-next  → 500 double-next detection');
-  console.log('  HEAD   /api/users          → headers only');
-  console.log('  OPTIONS /api/users         → Allow header');
-});
+app.listen(3000);

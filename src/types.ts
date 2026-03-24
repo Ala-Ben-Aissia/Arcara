@@ -110,7 +110,7 @@ export type Middleware = (
   req: http.IncomingMessage,
   res: http.ServerResponse,
   next: () => void | Promise<void>,
-) => void | Promise<void>;
+) => void | Promise<void> | http.ServerResponse;
 
 /**
  * Internal shape of an entry in Layer.middlewares.

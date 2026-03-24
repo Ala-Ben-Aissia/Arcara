@@ -72,6 +72,12 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     logging across all exit paths
   - last-resort catch bypasses all proto methods to avoid throw cascade
   - `listen(port, host, callback)` — defaults to `0.0.0.0`
+- `src/index.ts`: single entry point re-exporting Arcara (default),
+  Router, ArcaraError, and all public types. No logic lives here.
+- `src/playground/app.ts`: local sandbox exercising the full feature
+  set — root routes, mounted routers, nested params, middleware,
+  body parsing, and scoped error handlers. Excluded from tsconfig
+  build output. Run with: npm run play
 
 ### Repository structure, license, and tooling configuration
 

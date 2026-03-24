@@ -80,7 +80,7 @@ export type RouteHandler<
       : { body: BodyPayload }),
   res: http.ServerResponse,
   next: () => void | Promise<void>,
-) => void | Promise<void>;
+) => void | Promise<void> | http.ServerResponse;
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 

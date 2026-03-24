@@ -220,7 +220,7 @@ export abstract class Layer implements Dispatchable {
       }
       index = i;
       if (i === stack.length) return;
-      await stack[i]!(req as any, res, () => dispatch(i + 1));
+      await stack[i]?.(req, res, () => dispatch(i + 1));
     };
 
     await dispatch(0);

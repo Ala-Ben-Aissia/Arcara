@@ -22,14 +22,14 @@ function escapeRegex(str: string): string {
  *
  * Prefix mode (prefix: true)  — used for mounted child routers:
  *   compilePath('/api', true)
- *   → { regex: /^\/api(?:\/.*)?$/, paramNames: [] }
+ *   → { regex: /^\/api(?=\/|$)/, paramNames: [] }
  *
  *   compilePath('/orgs/:orgId', true)
- *   → { regex: /^\/orgs\/([^/]+)(?:\/.*)?$/, paramNames: ['orgId'] }
+ *   → { regex: /^\/orgs\/([^\/]+)(?=\/|$)/, paramNames: ['orgId'] }
  *
  * The difference is only in the terminator:
- *   exact  → \/?$          (optional trailing slash, then end)
- *   prefix → (?:\/.*)?$    (optional slash + anything, then end)
+ *   exact  → \/?$        (optional trailing slash, then end)
+ *   prefix → (?=\/|$)   (lookahead — next char must be '/' or end, not consumed)
  */
 export function compilePath<Params extends string = never>(
   path: string,
@@ -47,7 +47,12 @@ export function compilePath<Params extends string = never>(
     })
     .replace(/\//g, '\\/');
 
-  const terminator = prefix ? '(?:\\/.*)?$' : '\\/?$';
+  // Prefix mode uses a lookahead — asserts the next char is '/' or end of
+  // string without consuming it. This ensures prefixMatch[0] is always the
+  // bare prefix ('/api'), so slicing it off leaves the full sub-path ('/users/42')
+  // intact for the child router. A greedy '(?:\/.*)?$' would consume the entire
+  // remaining path and leave the child with '/' on every request.
+  const terminator = prefix ? '(?=\\/|$)' : '\\/?$';
 
   return {
     regex: new RegExp(`^${regexStr}${terminator}`),
@@ -102,18 +107,13 @@ export function matchRoute(
 
   for (const route of routes) {
     const match = pathname.match(route.regex);
-
-    // pathname does not match this route's pattern — try next
     if (!match) continue;
 
-    // pathname matched but method did not — flag it and keep looking
-    // (a later route might match both)
     if (route.method !== method) {
       methodMismatch = true;
       continue;
     }
 
-    // both pathname and method matched — extract params in order
     const params = Object.fromEntries(
       route.paramNames.map((name, i) => [name, match[i + 1] ?? '']),
     );
@@ -121,7 +121,6 @@ export function matchRoute(
     return { success: true, route, params };
   }
 
-  // no full match found — return the most accurate failure code
   return methodMismatch
     ? { success: false, code: 405, error: 'Method Not Allowed' }
     : { success: false, code: 404, error: 'Not Found' };

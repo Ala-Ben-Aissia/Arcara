@@ -138,10 +138,12 @@ export abstract class Layer implements Dispatchable {
       }
 
       // 3. Recurse into mounted child layers
+      let childMatched = false;
       for (const child of this.children) {
         const prefixMatch = pathname.match(child.regex);
         if (!prefixMatch) continue;
 
+        childMatched = true;
         const prefixParams = Object.fromEntries(
           child.paramNames.map((name, i) => [name, prefixMatch[i + 1] ?? '']),
         );
@@ -153,10 +155,15 @@ export abstract class Layer implements Dispatchable {
         if (res.writableEnded) return;
       }
 
-      // 4. Nothing matched — 405 if path existed with wrong method, else 404
+      // 4. Nothing matched — 405 if path existed with wrong method on own
+      //    routes and no child router claimed the prefix, else 404.
+      //    If a child matched the prefix (childMatched) but didn't write a
+      //    response, its own dispatch already threw and was caught internally
+      //    — we only reach here if the child called next() through without
+      //    responding, which falls through to 404.
       throw new ArcaraError(
-        methodMismatch ? 405 : 404,
-        methodMismatch ? 'Method Not Allowed' : 'Not Found',
+        methodMismatch && !childMatched ? 405 : 404,
+        methodMismatch && !childMatched ? 'Method Not Allowed' : 'Not Found',
       );
     } catch (e) {
       this.handleError(e, req, res);
@@ -197,7 +204,14 @@ export abstract class Layer implements Dispatchable {
    *
    * Double-next detection: `index` tracks the last handler position that
    * started executing. If next() is called with i <= index, the same handler
-   * called next() twice — route to handleError instead of silently re-running.
+   * called next() twice.
+   *
+   * `poisoned` is set to true on detection before handleError is called.
+   * All subsequent dispatch(i) calls become no-ops immediately — this is
+   * necessary because `return` inside the inner closure only exits that
+   * closure, not the still-executing async handler that made the second
+   * next() call. Without the flag, that handler continues running after the
+   * error response has already been sent.
    */
   protected async runStack(
     req: http.IncomingMessage,
@@ -205,9 +219,13 @@ export abstract class Layer implements Dispatchable {
     stack: RouteHandler<any>[],
   ): Promise<void> {
     let index = -1;
+    let poisoned = false;
 
     const dispatch = async (i: number): Promise<void> => {
+      if (poisoned) return;
+
       if (i <= index) {
+        poisoned = true;
         this.handleError(
           new ArcaraError(
             500,
@@ -218,6 +236,7 @@ export abstract class Layer implements Dispatchable {
         );
         return;
       }
+
       index = i;
       if (i === stack.length) return;
       await stack[i]?.(req, res, () => dispatch(i + 1));

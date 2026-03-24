@@ -203,7 +203,15 @@ declare module 'node:http' {
   interface IncomingMessage {
     /** Parsed URL path parameters — populated by the router before handlers run. */
     params: Record<string, string>;
-    /** Parsed URL query string — populated from url.searchParams. */
+    /**
+     * Parsed URL query string — populated from url.searchParams.
+     *
+     * **Repeated keys are not supported.** `?tag=a&tag=b` produces
+     * `{ tag: 'b' }` — only the last value for a given key is kept.
+     * This is a deliberate simplification for v0.x. If your API requires
+     * multi-value query params, read `new URL(req.url).searchParams`
+     * directly in your handler.
+     */
     query: Record<string, string>;
     /** Parsed request body — populated by parseBody before handlers run. */
     body: BodyPayload;

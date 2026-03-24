@@ -284,18 +284,37 @@ export class Arcara extends Layer {
   // ── Server ──────────────────────────────────────────────────────────────────
 
   /**
-   * Starts listening on the given port and host.
-   * Defaults to '0.0.0.0' — binds all interfaces, correct for containers
-   * and servers where 'localhost' would only bind the loopback interface.
-   * Returns `this` for chaining.
+   * Starts listening on the given port.
+   * Binds to all interfaces (`0.0.0.0`) by default.
    *
    * @example
-   * new Arcara()
-   *   .get('/', (req, res) => res.json({ ok: true }))
-   *   .listen(3000);
+   * app.listen(3000);
    */
-  listen(port: number): this;
-  listen(port: number, host = '0.0.0.0', callback?: () => void): this {
+  listen(port: number, callback?: () => void): this;
+
+  /**
+   * Starts listening on the given port and host.
+   *
+   * @example
+   * app.listen(3000, 'localhost');
+   */
+  listen(port: number, host: string, callback?: () => void): this;
+
+  listen(
+    port: number,
+    hostOrCallback?: string | (() => void),
+    maybeCallback?: () => void,
+  ): this {
+    let host = '0.0.0.0';
+    let callback: (() => void) | undefined;
+
+    if (typeof hostOrCallback === 'string') {
+      host = hostOrCallback;
+      callback = maybeCallback;
+    } else if (typeof hostOrCallback === 'function') {
+      callback = hostOrCallback;
+    }
+
     this.server.listen(port, host, () => {
       logger.start(host, port);
       callback?.();

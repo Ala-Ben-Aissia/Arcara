@@ -7,6 +7,8 @@ import { logger } from './utils/logger.js';
 import { safeWrite } from './utils/stream.js';
 import { validateJson, validateStatus } from './utils/validation.js';
 
+const TIMEOUT_MS = 30_000;
+
 // Augmented once at module load time — not per-request, zero overhead.
 // Proto methods must never be called from the default errorHandler path
 // since status() throws on invalid codes. The last-resort catch in
@@ -234,10 +236,19 @@ export class Arcara extends Layer {
     req.params = {};
     req.query = query;
 
+    // Worth doing: timeout
+    const timeout = setTimeout(() => {
+      if (!res.writableEnded) {
+        res.statusCode = 408;
+        res.end(JSON.stringify({ error: 'Request Timeout' }));
+      }
+    }, TIMEOUT_MS);
+
     // 3. Single finish listener covers every exit path uniformly —
     //    success, error, timeout, early return. No per-branch cleanup needed.
     res.once('finish', () => {
       req.destroy();
+      clearTimeout(timeout);
       logger.request(method, pathname, res.statusCode, Date.now() - startTime);
     });
 

@@ -1,128 +1,176 @@
-import { Arcara, ArcaraError, Router } from '../index.js';
+/**
+ * Arcara Test Server
+ *
+ * Drop this next to your src/ and run:
+ *   npx tsx test-server.ts
+ *
+ * Covers:
+ *   - Global middleware (request ID injection)
+ *   - Prefixed middleware (/api only)
+ *   - CRUD routes with dynamic params + query
+ *   - Mounted Router with its own onError
+ *   - Chained handlers (auth → handler)
+ *   - Body parsing: JSON + form-urlencoded
+ *   - Forced 4xx/5xx error paths
+ *   - Double-next() detection
+ *   - HEAD / OPTIONS introspection
+ */
+
+import { Arcara, Middleware, Router } from '../index';
+
+// ── Fake DB ──────────────────────────────────────────────────────────────────
+
+const users = new Map([
+  ['1', { id: '1', name: 'Alice', role: 'admin' }],
+  ['2', { id: '2', name: 'Bob', role: 'user' }],
+]);
+
+// ── Auth middleware (simulated) ──────────────────────────────────────────────
+
+const requireAuth: Middleware = (req, res, next) => {
+  const token = req.headers['x-api-key'];
+  if (!token || token !== 'secret') {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  next();
+};
+
+// ── Root app ─────────────────────────────────────────────────────────────────
 
 const app = new Arcara();
+const app2 = new Arcara();
 
-// ── Global middleware ─────────────────────────────────────────────────────────
+app2.listen(4000, 'localhost', () => {
+  console.log('Second Arcara instance running on http://localhost:4000');
+});
 
+app2.get('/hello', (_req, res) => {
+  res.json({ message: 'Hello from the second Arcara instance!' });
+});
+
+// Global middleware — stamps every request with a correlation ID
 app.use((req, _res, next) => {
-  console.log(`→ ${req.method} ${req.url}`);
+  (req as any).requestId = Math.random().toString(36).slice(2, 10);
+  console.log(`[${(req as any).requestId}] ${req.method} ${req.url}`);
   next();
 });
 
-// ── Root routes ───────────────────────────────────────────────────────────────
+// Prefixed middleware — only runs under /api
+app.use('/api', (_req, res, next) => {
+  res.setHeader('x-powered-by', 'Arcara');
+  next();
+});
+
+// ── Health ───────────────────────────────────────────────────────────────────
 
 app.get('/', (_req, res) => {
-  res.json({ name: 'arcara', status: 'ok' });
+  res.json({ status: 'ok', framework: 'Arcara' });
 });
 
-app.get('/health', (_req, res) => {
-  res.status(200).json({ healthy: true });
-});
+// ── Users router ─────────────────────────────────────────────────────────────
 
-// ── Body parsing ──────────────────────────────────────────────────────────────
+const usersRouter = new Router();
 
-app.post('/echo', (req, res) => {
-  res.status(201).json({ received: req.body });
-});
-
-// ── Error throwing ────────────────────────────────────────────────────────────
-
-app.get('/boom', () => {
-  throw new ArcaraError(503, 'Service temporarily unavailable');
-});
-
-app.get('/crash', () => {
-  throw new Error('Something unexpected happened');
-});
-
-// ── Mounted router with nested params and scoped error handler ────────────────
-
-const api = new Router();
-
-api.onError((err, _req, res) => {
-  // Scoped — only handles errors thrown inside this router
-  res.statusCode = err.status;
+// Router-level error handler (overrides default for this sub-tree)
+usersRouter.onError((err, _req, res) => {
+  res.statusCode = err.status ?? 500;
   res.setHeader('content-type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify({ apiError: err.message, status: err.status }));
+  res.end(JSON.stringify({ error: err.message, source: 'usersRouter' }));
 });
 
-// Prefix-scoped middleware — runs for all /api/* routes
-api.use('/users', (_req, _res, next) => {
-  console.log('  users middleware');
+// GET /api/users?role=admin
+usersRouter.get('/users', (req, res) => {
+  const role = req.query?.role;
+  const result = role
+    ? [...users.values()].filter((u) => u.role === role)
+    : [...users.values()];
+  res.json(result);
+});
+
+// GET /api/users/:id
+usersRouter.get('/users/:id', (req, res) => {
+  const user = users.get(req.params.id);
+  if (!user) res.status(404).json({ error: 'User not found' });
+  else res.json(user);
+});
+
+// POST /api/users  (requires auth, reads JSON body)
+usersRouter.post('/users', requireAuth, (req, res) => {
+  const { name, role } = req.body as { name: string; role: string };
+  if (!name) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  const id = String(users.size + 1);
+  const user = { id, name, role: role ?? 'user' };
+  users.set(id, user);
+  res.status(201).json(user);
+});
+
+// PUT /api/users/:id
+usersRouter.put('/users/:id', requireAuth, (req, res) => {
+  const user = users.get(req.params.id);
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  const updated = { ...user, ...(req.body as object) };
+  users.set(req.params.id, updated);
+  res.json(updated);
+});
+
+// DELETE /api/users/:id
+usersRouter.delete('/users/:id', requireAuth, (req, res) => {
+  if (!users.delete(req.params.id)) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  res.status(204).json(null);
+});
+
+// Mount router
+app.use('/api', usersRouter);
+
+// ── Error-trigger routes (for manual testing) ─────────────────────────────────
+
+// Force a 500 via thrown error
+app.get('/debug/crash', (_req, _res) => {
+  throw new Error('Intentional crash — testing 500 path');
+});
+
+// Force a 400 via ArcaraError
+app.get('/debug/bad-request', (_req, res) => {
+  res.status(400).json({ error: 'Intentional 400' });
+});
+
+// Double next() — should surface as 500 with framework message
+app.get('/debug/double-next', (_req, _res, next) => {
   next();
+  next(); // second call — should trigger ArcaraError 500
 });
 
-api.get('/users', (_req, res) => {
-  res.json({
-    users: [
-      { id: '1', name: 'Alice' },
-      { id: '2', name: 'Bob' },
-    ],
-  });
-});
+// ── Form body test ────────────────────────────────────────────────────────────
 
-api.get('/users/:userId', (req, res) => {
-  // req.params.userId is inferred as string — TypeScript knows it exists
-  res.json({ userId: req.params.userId });
-});
-
-api.post('/users/:userId/posts', (req, res) => {
-  res.status(201).json({
-    userId: req.params.userId,
-    post: req.body,
-  });
-});
-
-// Nested params — orgId comes from the mount prefix, resourceId from the route
-const nested = new Router();
-
-nested.get('/:resourceId', (req, res) => {
-  res.json({
-    orgId: req.params.orgId,
-    resourceId: req.params.resourceId,
-  });
-});
-
-app.use('/api', api);
-
-api.use('/orgs/:orgId/resources', nested);
-
-// Scoped error inside api router
-api.get('/secret', () => {
-  throw new ArcaraError(403, 'Forbidden');
-});
-
-// ── Send variants ─────────────────────────────────────────────────────────────
-
-app.get('/text', (_req, res) => {
-  res.send('Hello, world!');
-});
-
-app.get('/html', (_req, res) => {
-  res.send('<html><body><h1>Hello</h1></body></html>');
-});
-
-app.get('/buffer', (_req, res) => {
-  res.send(Buffer.from([0x89, 0x50, 0x4e, 0x47])); // PNG magic bytes
+app.post('/form', (req, res) => {
+  res.json({ received: req.body });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-app.listen(3000, 'localhost');
-
-/*
-Try it:
-  curl http://localhost:3000/
-  curl http://localhost:3000/health
-  curl -X POST http://localhost:3000/echo -H 'content-type: application/json' -d '{"hello":"world"}'
-  curl http://localhost:3000/boom
-  curl http://localhost:3000/crash
-  curl http://localhost:3000/api/users
-  curl http://localhost:3000/api/users/42
-  curl -X POST http://localhost:3000/api/users/42/posts -H 'content-type: application/json' -d '{"title":"hello"}'
-  curl http://localhost:3000/api/orgs/org-1/resources/res-99
-  curl http://localhost:3000/api/secret
-  curl http://localhost:3000/text
-  curl http://localhost:3000/html
-  curl -X OPTIONS http://localhost:3000/api/users
-*/
+app.listen(3000, '0.0.0.0', () => {
+  console.log('\nArcara test server running on http://localhost:3000\n');
+  console.log('Routes:');
+  console.log('  GET    /');
+  console.log('  GET    /api/users          ?role=admin|user');
+  console.log('  GET    /api/users/:id');
+  console.log('  POST   /api/users          x-api-key: secret');
+  console.log('  PUT    /api/users/:id      x-api-key: secret');
+  console.log('  DELETE /api/users/:id      x-api-key: secret');
+  console.log('  POST   /form               application/x-www-form-urlencoded');
+  console.log('  GET    /debug/crash        → 500');
+  console.log('  GET    /debug/bad-request  → 400');
+  console.log('  GET    /debug/double-next  → 500 double-next detection');
+  console.log('  HEAD   /api/users          → headers only');
+  console.log('  OPTIONS /api/users         → Allow header');
+});

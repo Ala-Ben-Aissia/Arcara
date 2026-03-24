@@ -72,6 +72,7 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     logging across all exit paths
   - last-resort catch bypasses all proto methods to avoid throw cascade
   - `listen(port, host, callback)` — defaults to `0.0.0.0`
+  - Request timeout (30s default) with proper cleanup to prevent hanging connections
 - `src/index.ts`: single entry point re-exporting Arcara (default),
   Router, ArcaraError, and all public types. No logic lives here.
 - `src/playground/app.ts`: local sandbox exercising the full feature

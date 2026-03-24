@@ -30,8 +30,7 @@ const users = new Map([
 const requireAuth: Middleware = (req, res, next) => {
   const token = req.headers['x-api-key'];
   if (!token || token !== 'secret') {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
+    return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
 };
@@ -41,11 +40,11 @@ const requireAuth: Middleware = (req, res, next) => {
 const app = new Arcara();
 
 // Global middleware — stamps every request with a correlation ID
-app.use((req, _res, next) => {
-  (req as any).requestId = Math.random().toString(36).slice(2, 10);
-  console.log(`[${(req as any).requestId}] ${req.method} ${req.url}`);
-  next();
-});
+// app.use((req, _res, next) => {
+//   (req as any).requestId = Math.random().toString(36).slice(2, 10);
+//   console.log(`[${(req as any).requestId}] ${req.method} ${req.url}`);
+//   next();
+// });
 
 // Prefixed middleware — only runs under /api
 app.use('/api', (_req, res, next) => {
@@ -144,9 +143,9 @@ app.get('/debug/double-next', (_req, _res, next) => {
 // ── Form body test ────────────────────────────────────────────────────────────
 
 app.post('/form', (req, res) => {
-  res.json({ received: req.body });
+  res.send({ received: req.body });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-app.listen(3000);
+app.listen(3000, 'localhost');

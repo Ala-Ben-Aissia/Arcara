@@ -12,10 +12,10 @@ import type {
 } from './types.js';
 import { ArcaraError } from './types.js';
 import { logger } from './utils/logger.js';
-import { compilePath, matchRoute } from './utils/routing.js';
+import { compilePath, RadixTree } from './utils/routing.js';
 
 export abstract class Layer implements Dispatchable {
-  protected routes: Route[] = [];
+  protected routeTree = new RadixTree();
   protected middlewares: StoredMiddleware[] = [];
   protected children: StoredChild[] = [];
 
@@ -126,7 +126,7 @@ export abstract class Layer implements Dispatchable {
         req.method === 'HEAD' ? 'GET' : (req.method ?? 'GET')
       ).toUpperCase() as HttpMethod;
 
-      const match = matchRoute(pathname, this.routes, effectiveMethod);
+      const match = this.routeTree.lookup(pathname, effectiveMethod);
       const methodMismatch = !match.success && match.code === 405;
 
       if (match.success) {
@@ -175,15 +175,7 @@ export abstract class Layer implements Dispatchable {
    * a given pathname. Used by OPTIONS handling in Arcara.
    */
   collectAllowedMethods(pathname: string): Set<HttpMethod> {
-    const allowed = new Set<HttpMethod>();
-
-    for (const route of this.routes) {
-      if (route.regex.test(pathname)) {
-        allowed.add(route.method);
-        // HEAD is implicitly allowed whenever GET is registered
-        if (route.method === 'GET') allowed.add('HEAD');
-      }
-    }
+    const allowed = this.routeTree.collectAllowedMethods(pathname);
 
     for (const child of this.children) {
       const prefixMatch = pathname.match(child.regex);
@@ -276,7 +268,8 @@ export abstract class Layer implements Dispatchable {
     handlers: RouteHandler<Params>[],
   ): this {
     const { regex, paramNames } = compilePath<Params>(path);
-    this.routes.push({ method, pattern: path, regex, paramNames, handlers });
+    const route: Route = { method, pattern: path, regex, paramNames, handlers };
+    this.routeTree.insert(route);
     return this;
   }
 

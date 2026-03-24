@@ -1,65 +1,5 @@
 import type { HttpMethod, Route } from '../types.js';
 
-/**
- * Escapes regex special characters in a string.
- */
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Compiles a path pattern string into a regex and an ordered list of
- * param names. Called once at route or child registration time.
- *
- * @param path    - The path pattern, e.g. '/users/:id'
- * @param prefix  - When true, the regex matches the pattern as a prefix
- *                  rather than an exact path. Used for mounted child routers
- *                  so that '/api' matches '/api/users/42', not just '/api'.
- *
- * Exact mode  (prefix: false) — default, used for routes:
- *   compilePath('/users/:id')
- *   → { regex: /^\/users\/([^/]+)\/?$/, paramNames: ['id'] }
- *
- * Prefix mode (prefix: true)  — used for mounted child routers:
- *   compilePath('/api', true)
- *   → { regex: /^\/api(?=\/|$)/, paramNames: [] }
- *
- *   compilePath('/orgs/:orgId', true)
- *   → { regex: /^\/orgs\/([^\/]+)(?=\/|$)/, paramNames: ['orgId'] }
- *
- * The difference is only in the terminator:
- *   exact  → \/?$        (optional trailing slash, then end)
- *   prefix → (?=\/|$)   (lookahead — next char must be '/' or end, not consumed)
- */
-export function compilePath<Params extends string = never>(
-  path: string,
-  prefix = false,
-): {
-  regex: RegExp;
-  paramNames: Params[];
-} {
-  const paramNames: Params[] = [];
-
-  const regexStr = escapeRegex(path)
-    .replace(/:([^/]+)/g, (_, name: Params) => {
-      paramNames.push(name);
-      return '([^/]+)';
-    })
-    .replace(/\//g, '\\/');
-
-  // Prefix mode uses a lookahead — asserts the next char is '/' or end of
-  // string without consuming it. This ensures prefixMatch[0] is always the
-  // bare prefix ('/api'), so slicing it off leaves the full sub-path ('/users/42')
-  // intact for the child router. A greedy '(?:\/.*)?$' would consume the entire
-  // remaining path and leave the child with '/' on every request.
-  const terminator = prefix ? '(?=\\/|$)' : '\\/?$';
-
-  return {
-    regex: new RegExp(`^${regexStr}${terminator}`),
-    paramNames,
-  };
-}
-
 type MatchSuccess = {
   success: true;
   route: Route;
@@ -74,54 +14,144 @@ type MatchFailure = {
 
 export type MatchResult = MatchSuccess | MatchFailure;
 
-/**
- * Attempts to match an incoming pathname and HTTP method against a list
- * of compiled routes. Returns a discriminated union result.
- *
- * Distinguishes between two failure cases:
- * - 404 Not Found — no route matches the pathname at all
- * - 405 Method Not Allowed — pathname matched but no route accepts this method
- *
- * This distinction matters: a 405 tells the client their method is wrong,
- * a 404 tells them the resource does not exist. Conflating them is an HTTP
- * spec violation.
- *
- * Routes are tested in registration order — first match wins.
- *
- * @example
- * matchRoute('/users/42', routes, 'GET')
- * // success → { success: true, route, params: { id: '42' } }
- *
- * matchRoute('/users/42', routes, 'PATCH')
- * // method mismatch → { success: false, code: 405, error: 'Method Not Allowed' }
- *
- * matchRoute('/unknown', routes, 'GET')
- * // no match → { success: false, code: 404, error: 'Not Found' }
- */
-export function matchRoute(
-  pathname: string,
-  routes: Route[],
-  method: HttpMethod,
-): MatchResult {
-  let methodMismatch = false;
+class RadixNode {
+  public children = new Map<string, RadixNode>();
+  public paramChild: RadixNode | null = null;
+  public paramName: string | null = null;
+  public routes: Partial<Record<HttpMethod, Route>> = {};
+}
 
-  for (const route of routes) {
-    const match = pathname.match(route.regex);
-    if (!match) continue;
+export class RadixTree {
+  private root = new RadixNode();
 
-    if (route.method !== method) {
-      methodMismatch = true;
-      continue;
+  /**
+   * Inserts a route into the prefix tree.
+   * Compiles the path into segments and builds the necessary nodes.
+   */
+  public insert(route: Route): void {
+    // Strip leading/trailing slashes and split
+    const segments = route.pattern.split('/').filter(Boolean);
+    let current = this.root;
+
+    for (const segment of segments) {
+      if (segment.startsWith(':')) {
+        const paramName = segment.slice(1);
+        if (!current.paramChild) {
+          const paramNode = new RadixNode();
+          paramNode.paramName = paramName; // ← on the node that represents the param
+          current.paramChild = paramNode;
+        }
+        current = current.paramChild;
+      } else {
+        if (!current.children.has(segment)) {
+          current.children.set(segment, new RadixNode());
+        }
+        current = current.children.get(segment)!;
+      }
     }
 
-    const params = Object.fromEntries(
-      route.paramNames.map((name, i) => [name, match[i + 1] ?? '']),
-    );
-
-    return { success: true, route, params };
+    current.routes[route.method] = route;
   }
 
-  return methodMismatch
-    ? { success: false, code: 405, error: 'Method Not Allowed' }
-    : { success: false, code: 404, error: 'Not Found' };
+  /**
+   * Traverses the tree to find a matching route.
+   */
+  public lookup(pathname: string, method: HttpMethod): MatchResult {
+    const segments = pathname.split('/').filter(Boolean);
+    const params: Record<string, string> = {};
+
+    const matchedNode = this.search(this.root, segments, 0, params);
+
+    if (!matchedNode) {
+      return { success: false, code: 404, error: 'Not Found' };
+    }
+
+    const route = matchedNode.routes[method];
+
+    if (route) {
+      return { success: true, route, params };
+    }
+
+    // The node exists, but not for this method -> 405
+    const hasOtherMethods = Object.keys(matchedNode.routes).length > 0;
+    if (hasOtherMethods) {
+      return { success: false, code: 405, error: 'Method Not Allowed' };
+    }
+
+    return { success: false, code: 404, error: 'Not Found' };
+  }
+
+  /**
+   * Recursive search to support backtracking.
+   * Tries static segments first, falls back to param segments if static hits a dead end.
+   */
+  private search(
+    node: RadixNode,
+    segments: string[],
+    index: number,
+    params: Record<string, string>,
+  ): RadixNode | null {
+    if (index === segments.length) return node;
+
+    const segment = segments[index]!;
+
+    // Static first
+    const staticChild = node.children.get(segment);
+    if (staticChild) {
+      const result = this.search(staticChild, segments, index + 1, params);
+      if (result) return result;
+    }
+
+    // Param fallback with snapshot/restore
+    if (node.paramChild) {
+      const snapshot = { ...params }; // snapshot before mutation
+      params[node.paramChild.paramName!] = segment;
+      const result = this.search(node.paramChild, segments, index + 1, params);
+      if (result) return result;
+      // Restore — wipe any params set in this branch
+      Object.keys(params).forEach((k) => delete params[k]);
+      Object.assign(params, snapshot);
+    }
+
+    return null;
+  }
+
+  /**
+   * Walks the tree to collect all registered methods for a path (used for OPTIONS).
+   */
+  public collectAllowedMethods(pathname: string): Set<HttpMethod> {
+    const segments = pathname.split('/').filter(Boolean);
+    const matchedNode = this.search(this.root, segments, 0, {});
+    const allowed = new Set<HttpMethod>();
+
+    if (matchedNode) {
+      for (const method of Object.keys(matchedNode.routes) as HttpMethod[]) {
+        allowed.add(method);
+        if (method === 'GET') allowed.add('HEAD');
+      }
+    }
+
+    return allowed;
+  }
+}
+
+/**
+ * We keep compilePath for child router prefixes, as they still need regex
+ * to easily slice off the mount path during recursive dispatch.
+ */
+export function compilePath<Params extends string = never>(
+  path: string,
+  prefix = false,
+): { regex: RegExp; paramNames: Params[] } {
+  const paramNames: Params[] = [];
+  const regexStr = path
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // escape regex
+    .replace(/:([^/]+)/g, (_, name: Params) => {
+      paramNames.push(name);
+      return '([^/]+)';
+    })
+    .replace(/\//g, '\\/');
+
+  const terminator = prefix ? '(?=\\/|$)' : '\\/?$';
+  return { regex: new RegExp(`^${regexStr}${terminator}`), paramNames };
 }

@@ -116,7 +116,7 @@ app.get('/users', (req, res) => {
 });
 
 app.post('/users', (req, res) => {
-  req.body; // BodyPayload — JSON | form | text | Buffer
+  req.body; // any
 });
 ```
 

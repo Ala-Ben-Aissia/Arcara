@@ -11,7 +11,7 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Core type definitions: `BodyPayload`, `HttpMethod`, `ExtractParams`,
+- Core type definitions, `HttpMethod`, `ExtractParams`,
   `RouteHandler`, `Route`, `Middleware`, `StoredMiddleware`, `StoredChild`,
   `ErrorHandler`, `ArcaraError`
 - `Dispatchable` interface to break the `Layer` → `types` circular dependency

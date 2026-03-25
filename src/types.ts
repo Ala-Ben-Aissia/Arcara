@@ -1,21 +1,5 @@
 import type http from 'node:http';
 
-// ── Body ──────────────────────────────────────────────────────────────────────
-
-/**
- * The union of all possible parsed request body shapes.
- *
- * - Record<string, unknown>  → application/json
- * - Record<string, string>   → application/x-www-form-urlencoded
- * - string                   → text/*
- * - Buffer                   → binary / unknown content-type
- */
-export type BodyPayload =
-  | Record<string, unknown>
-  | Record<string, string>
-  | string
-  | Buffer;
-
 // ── HTTP method ───────────────────────────────────────────────────────────────
 
 /**
@@ -65,7 +49,7 @@ export type ExtractParams<Path extends string> =
  *
  * 2. Method — GET and DELETE handlers receive body: never,
  *    preventing accidental body access on bodyless methods.
- *    All other methods receive body: BodyPayload.
+ *    All other methods receive body: any.
  */
 export type RouteHandler<
   Params extends string = never,
@@ -77,7 +61,7 @@ export type RouteHandler<
       : { params: Record<Params, string> }) &
     ([Method] extends ['GET' | 'HEAD' | 'DELETE']
       ? { body: never }
-      : { body: BodyPayload }),
+      : { body: any }),
   res: http.ServerResponse,
   next: () => void | Promise<void>,
 ) => void | Promise<void> | http.ServerResponse;
@@ -212,7 +196,7 @@ declare module 'node:http' {
      */
     query: Record<string, string>;
     /** Parsed request body — populated by parseBody before handlers run. */
-    body: BodyPayload;
+    body: any;
   }
 
   interface ServerResponse {

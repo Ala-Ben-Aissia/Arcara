@@ -95,8 +95,6 @@ export type RouteHandler<
 export type Route = {
   method: HttpMethod;
   pattern: string;
-  regex: RegExp;
-  paramNames: string[];
   handlers: RouteHandler<any>[];
 };
 

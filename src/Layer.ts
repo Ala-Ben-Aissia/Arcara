@@ -267,8 +267,7 @@ export abstract class Layer implements Dispatchable {
     method: HttpMethod,
     handlers: RouteHandler<Params>[],
   ): this {
-    const { regex, paramNames } = compilePath<Params>(path);
-    const route: Route = { method, pattern: path, regex, paramNames, handlers };
+    const route: Route = { method, pattern: path, handlers };
     this.routeTree.insert(route);
     return this;
   }

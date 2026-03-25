@@ -22,9 +22,9 @@ const { values } = parseArgs({
     url: { type: 'string', default: 'http://localhost:3000/' },
     concurrency: { type: 'string', default: '20' },
     duration: { type: 'string', default: '5' },
-    method: { type: 'string', default: 'GET' },
+    method: { type: 'string', default: 'GET' }
   },
-  strict: false,
+  strict: false
 });
 
 const TARGET = values.url as string;
@@ -40,7 +40,7 @@ function request(url: URL): Promise<{ status: number; latency: number }> {
 
     const agent = new http.Agent({
       keepAlive: true,
-      maxSockets: CONCURRENCY, // one socket per worker, no queuing
+      maxSockets: CONCURRENCY // one socket per worker, no queuing
     });
 
     const req = http.request(
@@ -50,7 +50,7 @@ function request(url: URL): Promise<{ status: number; latency: number }> {
         path: url.pathname + url.search,
         method: METHOD,
         headers: { connection: 'keep-alive' },
-        agent,
+        agent
       },
       (res) => {
         // Drain — must consume body or socket backs up
@@ -58,10 +58,10 @@ function request(url: URL): Promise<{ status: number; latency: number }> {
         res.on('end', () =>
           resolve({
             status: res.statusCode ?? 0,
-            latency: performance.now() - t0,
-          }),
+            latency: performance.now() - t0
+          })
         );
-      },
+      }
     );
 
     req.on('error', reject);
@@ -75,7 +75,7 @@ async function worker(
   url: URL,
   endAt: number,
   results: { status: number; latency: number }[],
-  errors: Error[],
+  errors: Error[]
 ): Promise<void> {
   while (performance.now() < endAt) {
     try {
@@ -96,11 +96,11 @@ function percentile(sorted: number[], p: number): number {
 function summarize(
   results: { status: number; latency: number }[],
   errors: Error[],
-  durationMs: number,
+  durationMs: number
 ): void {
   const total = results.length;
   const successful = results.filter(
-    (r) => r.status >= 200 && r.status < 500,
+    (r) => r.status >= 200 && r.status < 500
   ).length;
   const rps = Math.round((total / durationMs) * 1000);
 
@@ -124,7 +124,7 @@ function summarize(
   console.log(`  Requests    ${total.toLocaleString()} total`);
   console.log(`  Req/sec     ${rps.toLocaleString()} rps`);
   console.log(
-    `  Success     ${successful.toLocaleString()} (${Math.round((successful / total) * 100)}%)`,
+    `  Success     ${successful.toLocaleString()} (${Math.round((successful / total) * 100)}%)`
   );
   console.log(`  Errors      ${errors.length}`);
   console.log(line);
@@ -135,7 +135,7 @@ function summarize(
   console.log(`    p99       ${percentile(latencies, 99)}ms`);
   console.log(`    min       ${Math.round(latencies[0]!)}ms`);
   console.log(
-    `    max       ${Math.round(latencies[latencies.length - 1]!)}ms`,
+    `    max       ${Math.round(latencies[latencies.length - 1]!)}ms`
   );
   console.log(line);
   console.log(`  Status codes`);
@@ -163,12 +163,12 @@ async function main(): Promise<void> {
   const warmupEnd = performance.now() + 1000;
   await Promise.all(
     Array.from({ length: Math.min(CONCURRENCY, 5) }, () =>
-      worker(url, warmupEnd, [], []),
-    ),
+      worker(url, warmupEnd, [], [])
+    )
   );
 
   console.log(
-    `Running ${CONCURRENCY} workers for ${DURATION_MS / 1000}s → ${TARGET}\n`,
+    `Running ${CONCURRENCY} workers for ${DURATION_MS / 1000}s → ${TARGET}\n`
   );
 
   const results: { status: number; latency: number }[] = [];
@@ -177,8 +177,8 @@ async function main(): Promise<void> {
 
   await Promise.all(
     Array.from({ length: CONCURRENCY }, () =>
-      worker(url, endAt, results, errors),
-    ),
+      worker(url, endAt, results, errors)
+    )
   );
 
   summarize(results, errors, DURATION_MS);
@@ -188,31 +188,3 @@ main().catch((e) => {
   console.error('Load test failed:', e.message);
   process.exit(1);
 });
-
-// BEFORE RADIX TREE
-// ────────────────────────────────────────────
-//   Arcara Load Test Results
-// ────────────────────────────────────────────
-//   Target      http://localhost:3000/
-//   Method      GET
-//   Concurrency 20 workers
-//   Duration    5s
-// ────────────────────────────────────────────
-//   Requests    33,940 total
-//   Req/sec     6,788 rps
-//   Success     33,940 (100%)
-//   Errors      0
-// ────────────────────────────────────────────
-//   Latency
-//     avg       3ms
-//     p50       3ms
-//     p90       3ms
-//     p99       4ms
-//     min       1ms
-//     max       25ms
-// ────────────────────────────────────────────
-//   Status codes
-//     200        33,940
-// ────────────────────────────────────────────
-
-// AFTER RADIX TREE

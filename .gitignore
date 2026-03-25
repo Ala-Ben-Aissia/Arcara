@@ -22,3 +22,7 @@ Thumbs.db
 # logs
 *.log
 npm-debug.log*
+
+# for me
+/src/DevPulse
+/src/Vaultex

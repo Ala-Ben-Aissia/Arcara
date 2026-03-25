@@ -255,13 +255,20 @@ export class Arcara extends Layer {
     try {
       // 4. OPTIONS — walk the full route tree, respond immediately
       if (method === 'OPTIONS') {
-        const allowed = this.collectAllowedMethods(pathname);
-        allowed.add('OPTIONS');
-        res.writeHead(204, { Allow: [...allowed].join(', ') });
-        res.end();
+        // CORS preflight request (automatically sent by the browser for non-simple
+        // cross-origin requests). We run the full middleware chain and any explicit
+        // app.options() routes first. If nothing ended the response, we send the
+        // standard automatic 204 No Content + Allow header as fallback.
+        await this.dispatch(pathname, req, res);
+
+        if (!res.writableEnded) {
+          const allowed = this.collectAllowedMethods(pathname);
+          allowed.add('OPTIONS');
+          res.writeHead(204, { Allow: [...allowed].join(', ') });
+          res.end();
+        }
         return;
       }
-
       // 5. Parse body for methods that carry one
       if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
         await this.parseBody(req);

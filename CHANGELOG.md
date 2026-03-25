@@ -9,6 +9,13 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.1.0] — 2026-03-23
 
+### Fixed
+
+- OPTIONS preflight requests now correctly run the full middleware chain  
+  (CORS, auth, logging, rate-limiting, etc.) before falling back to the  
+  automatic `204 No Content + Allow` response.  
+  Explicit `app.options()` routes can now override the default behavior.
+
 ### Added
 
 - Core type definitions, `HttpMethod`, `ExtractParams`,

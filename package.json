@@ -18,7 +18,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
     }
   },
   "files": [
@@ -28,18 +29,18 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit --watch",
-    "play": "tsx watch src/playground/app.ts",
-    "build": "tsc",
-    "prepublishOnly": "npm run build"
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "build:watch": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "prepublishOnly": "pnpm run build",
+    "release": "pnpm run build && npm publish"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=18.0.0"
   },
   "license": "MIT",
   "author": "Ala Ben Aissia",

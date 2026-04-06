@@ -1,4 +1,9 @@
-import http from 'node:http';
+import {
+  type IncomingMessage,
+  type Server,
+  ServerResponse,
+  createServer,
+} from 'http';
 import { Layer } from './Layer.js';
 import type { ArcaraOptions, HttpMethod } from './types.js';
 import { HttpError } from './types.js';
@@ -11,11 +16,11 @@ import { validateJson, validateStatus } from './utils/validation.js';
 //
 // Augmented once at module load — not per-request, zero overhead.
 // Scoped to this module: only Arcara consumers are affected, not arbitrary
-// http.Server instances. Proto methods must never be used from the default
+// Server instances. Proto methods must never be used from the default
 // errorHandler path since status() throws on invalid codes — the last-resort
 // catch in handleRequest bypasses all proto methods and writes raw statusCode.
 
-const proto = http.ServerResponse.prototype;
+const proto = ServerResponse.prototype;
 
 /**
  * Serializes an error to a plain JSON string for error response bodies.
@@ -123,7 +128,7 @@ proto.send = function (data: unknown) {
  * ```
  */
 export class Arcara extends Layer {
-  private readonly server: http.Server;
+  private readonly server: Server;
   private readonly bodyLimit: number;
   private readonly timeoutMs: number;
   private readonly openSockets = new Set<import('node:net').Socket>();
@@ -132,7 +137,7 @@ export class Arcara extends Layer {
     super();
     this.bodyLimit = options.bodyLimit ?? 1_048_576;
     this.timeoutMs = options.timeout ?? 30_000;
-    this.server = http.createServer(this.handleRequest.bind(this));
+    this.server = createServer(this.handleRequest.bind(this));
     this.server.on('connection', (socket) => {
       this.openSockets.add(socket);
       socket.once('close', () => this.openSockets.delete(socket));
@@ -155,7 +160,7 @@ export class Arcara extends Layer {
    * Body limit is enforced by pausing the stream on overflow, preventing
    * memory growth before the full oversize body arrives.
    */
-  private parseBody(req: http.IncomingMessage): Promise<void> {
+  private parseBody(req: IncomingMessage): Promise<void> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       let size = 0;
@@ -240,7 +245,7 @@ export class Arcara extends Layer {
    * Uses the `URL` constructor for correct parsing of encoded paths.
    * Falls back to `'/'` if `req.url` is missing or unparseable.
    */
-  private extractRequestInfo(req: http.IncomingMessage): {
+  private extractRequestInfo(req: IncomingMessage): {
     method: HttpMethod;
     pathname: string;
     query: Record<string, string>;
@@ -259,8 +264,8 @@ export class Arcara extends Layer {
   // ── Request lifecycle ─────────────────────────────────────────────────────
 
   private async handleRequest(
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
+    req: IncomingMessage,
+    res: ServerResponse,
   ): Promise<void> {
     const startTime = Date.now();
     const { method, pathname, query } = this.extractRequestInfo(req);

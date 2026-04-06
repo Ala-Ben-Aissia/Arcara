@@ -1,6 +1,6 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import http from 'node:http';
+import { IncomingMessage } from 'node:http';
 import { Layer } from '../Layer.js';
 import { HttpError } from '../types.js';
 import type { ArcaraRequest, ArcaraResponse, NextFn } from '../types.js';
@@ -22,7 +22,7 @@ class TestLayer extends Layer {
 // ── Request / Response mocks ──────────────────────────────────────────────────
 
 function mockReq(method = 'GET', url = '/'): ArcaraRequest {
-  const req = new http.IncomingMessage(null as any);
+  const req = new IncomingMessage(null as any);
   req.method = method;
   req.url = url;
   (req as ArcaraRequest).params = {};
@@ -314,7 +314,7 @@ describe('Layer — child layer mounting', () => {
     let seenPath = '';
 
     child.get('/:id', (req, res) => {
-      seenPath = (req.params as Record<string, string>).id ?? '';
+      seenPath = (req.params as Record<string, string>)['id'] ?? '';
       res.end();
     });
     parent.use('/items', child);

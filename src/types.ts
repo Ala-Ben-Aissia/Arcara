@@ -1,4 +1,4 @@
-import type http from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'http';
 
 // ── HTTP ────────────────────────────────────────────────────────────────────
 
@@ -117,8 +117,7 @@ declare module 'node:http' {
 export interface ArcaraRequest<
   Params extends string = string,
   Method extends HttpMethod = HttpMethod,
->
-  extends http.IncomingMessage {
+> extends IncomingMessage {
   params: Record<Params, string>;
   query: Record<string, string>;
   // Body is unknown for mutating methods, undefined for read-only ones.
@@ -130,7 +129,7 @@ export interface ArcaraRequest<
  * Arcara-typed response. Includes `status`, `json`, and `send` helpers
  * declared via module augmentation and available on every `ServerResponse`.
  */
-export interface ArcaraResponse extends http.ServerResponse {
+export interface ArcaraResponse extends ServerResponse {
   status(code: number): this;
   json(data: unknown): this;
   send(data: unknown): this;

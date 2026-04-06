@@ -1,4 +1,4 @@
-import type http from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /**
  * Writes `body` to `res` only if the socket is still writable.
@@ -16,8 +16,8 @@ import type http from 'node:http';
  * @param body - The serialized body chunk (string or Buffer)
  */
 export function safeWrite(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
+  req: IncomingMessage,
+  res: ServerResponse,
   body: string | Buffer,
 ): void {
   if (res.writableEnded) return;

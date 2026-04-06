@@ -1,4 +1,4 @@
-import type http from 'node:http';
+import type { IncomingMessage } from 'node:http';
 
 // ── Magic byte signatures ─────────────────────────────────────────────────────
 
@@ -145,7 +145,7 @@ function sniffString(s: string) {
  * fallback for unrecognized binary content — if the client sent a body with a
  * Content-Type, echoing it back is more informative than octet-stream.
  */
-export function detectContentType(input: unknown, req?: http.IncomingMessage) {
+export function detectContentType(input: unknown, req?: IncomingMessage) {
   // ── Binary paths ────────────────────────────────────────────────────────────
 
   if (Buffer.isBuffer(input)) {
@@ -183,7 +183,7 @@ export function detectContentType(input: unknown, req?: http.IncomingMessage) {
  * Returns the incoming request's Content-Type if present, otherwise
  * falls back to application/octet-stream. Used for unrecognized binary or scalar values.
  */
-function resolveOctetFallback(req?: http.IncomingMessage) {
+function resolveOctetFallback(req?: IncomingMessage) {
   if (req) {
     const ct = req.headers['content-type'];
     if (ct) return ct;

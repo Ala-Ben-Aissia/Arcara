@@ -2,6 +2,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { Arcara, HttpError } from '../index.js';
+import type { IncomingHttpHeaders } from 'node:http';
 
 // ── Test server harness ───────────────────────────────────────────────────────
 //
@@ -33,7 +34,7 @@ async function createTestServer(
 
 interface Response {
   status: number;
-  headers: http.IncomingHttpHeaders;
+  headers: IncomingHttpHeaders;
   body: string;
   json<T = unknown>(): T;
 }

@@ -58,7 +58,7 @@
   "scripts": {
     "build": "tsup --config tsup.config.ts",
     "dev": "tsup --config tsup.config.ts --watch",
-    "test": "node --test --experimental-strip-types tests/**/*.test.ts",
+    "test": "tsx --test src/tests/**/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:tests": "tsc -p tsconfig.test.json",
     "typecheck:build": "tsc -p tsconfig.build.json --noEmit",

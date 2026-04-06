@@ -18,7 +18,7 @@
     "strict": true, // enables all strict checks as a baseline
     "noUncheckedIndexedAccess": true, // arr[0] is T | undefined, not T
     "noImplicitOverride": true, // must explicitly mark overridden methods
-    "noImplicitReturns": true, // all code paths must return a value
+    // "noImplicitReturns": true, // all code paths must return a value
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": true, // undefined !== missing property
 

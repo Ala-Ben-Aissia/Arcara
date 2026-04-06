@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+
+  // Test config is separate for two reasons:
+  // 1. Tests may need slightly different compiler behavior
+  //    (e.g. looser module resolution for test utilities)
+  // 2. Running tsc --noEmit in CI against tests catches type errors
+  //    in test files without polluting the build tsconfig
+  "extends": "./tsconfig.json",
+
+  "compilerOptions": {
+    // Tests don't emit — tsc is used here purely for type checking.
+    // tsup / node --test handles actual execution.
+    "noEmit": true,
+
+    // Relax these for test files — unused vars in tests are common
+    // (e.g. a declared but not-yet-used fixture, a skipped test helper).
+    // Remove if you prefer strict discipline in tests too.
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+
+    // Tests import from src/ via relative paths — same module resolution.
+    // If you ever add test utilities under tests/helpers/, add a path alias:
+    // "paths": { "#test-utils": ["./tests/helpers/index.js"] }
+  },
+
+  "include": ["src", "tests"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,17 +1,17 @@
-import {
-  type ArcaraRequest,
-  type ArcaraResponse,
-  type Dispatchable,
-  type ErrorHandler,
-  type ExtractParams,
-  type HttpMethod,
-  type Middleware,
-  type Route,
-  type RouteHandler,
-  type StoredChild,
-  type StoredMiddleware,
-  HttpError,
+import type {
+  ArcaraRequest,
+  ArcaraResponse,
+  Dispatchable,
+  ErrorHandler,
+  ExtractParams,
+  HttpMethod,
+  Middleware,
+  Route,
+  RouteHandler,
+  StoredChild,
+  StoredMiddleware,
 } from './types.js';
+import { HttpError } from './types.js';
 import { logger } from './utils/logger.js';
 import { compilePath, RadixTree } from './utils/routing.js';
 
@@ -295,37 +295,39 @@ export abstract class Layer implements Dispatchable {
     res: ArcaraResponse,
     stack: RouteHandler<any>[],
   ): Promise<void> {
-    let index = -1;
-    let poisoned = false;
-
     const run = async (i: number): Promise<void> => {
-      if (poisoned) return;
-
-      if (i <= index) {
-        poisoned = true;
-        throw new HttpError(
-          500,
-          `next() called multiple times in handler at position ${index}`,
-        );
-      }
-
-      index = i;
       if (i === stack.length) return;
 
-      // Capture any error passed to next() so we can re-throw it after
-      // the handler's own async frame has settled. This is the correct
-      // approach: throwing synchronously inside the next() callback only
-      // works when the handler does `await next()`. For handlers that call
-      // `next(err)` without awaiting, the throw would be lost in an
-      // unhandled branch. Storing + re-throwing after `await handler(...)`
-      // guarantees propagation in all cases.
-      let nextError: unknown = undefined;
+      // Per-slot call counter. Counting calls directly in next() is the only
+      // reliable way to detect double-next regardless of whether the handler
+      // awaits next() or fire-and-forgets it.
+      //
+      // The previous approach used `i <= index` inside run() — that only fired
+      // when run() was called recursively from inside next(). In this design
+      // next() is a plain flag-setter that never calls run() directly, so that
+      // guard never triggered. Per-slot counting closes the hole.
+      let callCount = 0;
+      let nextError: HttpError | undefined;
       let nextCalled = false;
 
       const next = (err?: unknown): void => {
+        callCount++;
+
+        if (callCount > 1) {
+          // Store as nextError — do NOT throw synchronously here.
+          // If the handler doesn't await next(), a synchronous throw becomes
+          // an unhandled rejection that bypasses dispatch()'s catch block.
+          // Storing and re-throwing after `await handler()` guarantees it
+          // always reaches the error handler.
+          nextError = new HttpError(
+            500,
+            `next() called ${callCount} times in handler at position ${i}`,
+          );
+          return;
+        }
+
         nextCalled = true;
         if (err !== undefined) {
-          // Normalize immediately so downstream always receives an HttpError
           nextError =
             err instanceof HttpError
               ? err
@@ -333,21 +335,17 @@ export abstract class Layer implements Dispatchable {
                 ? new HttpError(500, err.message, err)
                 : new HttpError(500, String(err));
         }
-        // Do NOT call run(i + 1) here synchronously — let the await below
-        // drive advancement so the call stack stays linear and predictable.
       };
 
       await stack[i]?.(req, res, next);
 
-      // If next(err) was called, propagate the error now that the handler settled
+      // Re-throw any stored error (next(err) or double-next) now that the
+      // handler's async frame has fully settled.
       if (nextError !== undefined) throw nextError;
 
-      // If next() was called without error, advance the chain
-      if (nextCalled && nextError === undefined) {
-        await run(i + 1);
-      }
-      // If next() was never called, the handler ended the response itself —
-      // do nothing, dispatch() will check writableEnded after runStack returns.
+      // Advance only if next() was called exactly once without error.
+      if (nextCalled) await run(i + 1);
+      // next() never called -> handler ended the response itself.
     };
 
     await run(0);

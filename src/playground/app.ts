@@ -54,7 +54,7 @@ app.use('/api', (_req, res, next) => {
 
 // ── Health ───────────────────────────────────────────────────────────────────
 
-app.get('/', (_req, res) => {
+app.get('/', (_req, res, next) => {
   res.json({ status: 'ok', framework: 'Arcara' });
 });
 

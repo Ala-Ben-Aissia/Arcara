@@ -1,11 +1,6 @@
 import http from 'node:http';
 import { Layer } from './Layer.js';
-import type {
-  ArcaraOptions,
-  ArcaraRequest,
-  ArcaraResponse,
-  HttpMethod,
-} from './types.js';
+import type { ArcaraOptions, HttpMethod } from './types.js';
 import { HttpError } from './types.js';
 import { detectContentType } from './utils/content.js';
 import { logger } from './utils/logger.js';

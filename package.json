@@ -2,7 +2,7 @@
   "name": "arcara",
   "version": "0.1.7",
   "description": "A TypeScript-native, zero-dependency Node.js HTTP framework",
-  "author": "Ala Ben Aissia alabenaissia@outlook.com",
+  "author": "Aloulou <alabenaissia@users.noreply.github.com>",
   "license": "MIT",
   "private": false,
   "engines": {
@@ -56,7 +56,10 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup --config tsup.config.ts",
+    "build:js": "tsup --config tsup.config.ts",
+    "build:dts": "tsc -p tsconfig.build.json --emitDeclarationOnly --outDir dist",
+    "build:dcts": "node -e \"const fs=require('fs');const s=fs.readFileSync('dist/index.d.ts','utf8');fs.writeFileSync('dist/index.d.cts',s);\"",
+    "build": "pnpm build:js && pnpm build:dts && pnpm build:dcts",
     "dev": "tsup --config tsup.config.ts --watch",
     "test": "tsx --test src/tests/**/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -64,13 +67,11 @@
     "typecheck:build": "tsc -p tsconfig.build.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist",
-    "prepublishOnly": "pnpm clean && pnpm build && pnpm test"
+    "prepublishOnly": "pnpm clean && pnpm build && pnpm run test"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "tsup": "^8.0.0",
-    "typescript": "^5.5.0"
-  },
-  "peerDependencies": {},
-  "dependencies": {}
+    "tsup": "^8.5.1",
+    "typescript": "6.0.2"
+  }
 }

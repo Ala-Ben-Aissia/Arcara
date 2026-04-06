@@ -29,7 +29,6 @@
 // ── Core ──────────────────────────────────────────────────────────────────────
 
 export { Arcara } from './Arcara.js';
-export { Layer } from './Layer.js';
 export { Router } from './Router.js';
 
 // ── Types (public API surface) + Errors ────────────────────────────────────────────────

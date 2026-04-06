@@ -1,34 +1,36 @@
 {
   "compilerOptions": {
-    // ── Output ──────────────────────────────────────────────────────────────
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "outDir": "./dist",
     "rootDir": "./src",
-    "declaration": true, // emit .d.ts files for consumers
-    "declarationMap": true, // source maps for .d.ts (IDE go-to-definition)
-    "sourceMap": true, // source maps for debugging
-
-    // ── Module system ────────────────────────────────────────────────────────
-    "module": "NodeNext", // Node 22 native ESM — requires .js extensions on imports
-    "moduleResolution": "NodeNext",
-    "target": "ES2023", // Node 22 supports everything in ES2023
-
-    "types": ["@types/node"],
-
-    // ── Type safety ──────────────────────────────────────────────────────────
-    "strict": true, // enables all strict checks as a baseline
-    "noUncheckedIndexedAccess": true, // arr[0] is T | undefined, not T
-    "noImplicitOverride": true, // must explicitly mark overridden methods
-    // "noImplicitReturns": true, // all code paths must return a value
+    "types": ["node"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "useUnknownInCatchVariables": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    // "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "exactOptionalPropertyTypes": true, // undefined !== missing property
-
-    // ── Interop ──────────────────────────────────────────────────────────────
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noPropertyAccessFromIndexSignature": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-
-    // ── Output hygiene ───────────────────────────────────────────────────────
-    "removeComments": false, // keep JSDoc in dist for IDE tooltips
-    "skipLibCheck": true // don't type-check node_modules .d.ts files
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src", "tests"],
   "exclude": ["node_modules", "dist", "src/playground"]

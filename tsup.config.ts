@@ -17,16 +17,12 @@ export default defineConfig({
   // Why not just dts: true?
   // tsup's bundler-based dts emit re-exports types but can silently drop
   // ambient `declare module` blocks. We need those for consumer autocompletion.
-  dts: {
-    // Force tsup to use tsc (via @microsoft/api-extractor style resolution)
-    // rather than rollup-plugin-dts for declaration output.
-    // This preserves declare module augmentations correctly.
-    resolve: true,
-  },
+  dts: true,
 
-  // Emit .js.map files for runtime stack trace mapping.
-  // Used by Node --enable-source-maps and error monitoring (Sentry, Datadog).
-  sourcemap: true,
+  minify: true,
+  minifyIdentifiers: true,
+  minifySyntax: true,
+  minifyWhitespace: true,
 
   // Delete dist/ before each build — prevents stale artifacts.
   clean: true,

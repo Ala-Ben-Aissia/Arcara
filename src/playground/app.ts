@@ -16,7 +16,7 @@
  *   - HEAD / OPTIONS introspection
  */
 
-import { Arcara, Middleware, Router } from '../index.js';
+import { Arcara, type Middleware, Router } from '../index.js';
 
 // ── Fake DB ──────────────────────────────────────────────────────────────────
 
@@ -54,7 +54,7 @@ app.use('/api', (_req, res, next) => {
 
 // ── Health ───────────────────────────────────────────────────────────────────
 
-app.get('/', (_req, res, next) => {
+app.get('/', (_req, res) => {
   res.json({ status: 'ok', framework: 'Arcara' });
 });
 
@@ -71,7 +71,7 @@ usersRouter.onError((err, _req, res) => {
 
 // GET /api/users?role=admin
 usersRouter.get('/users', (req, res) => {
-  const role = req.query?.role;
+  const role = req.query['role'];
   const result = role
     ? [...users.values()].filter((u) => u.role === role)
     : [...users.values()];

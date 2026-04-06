@@ -10,6 +10,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
 
+    "types": ["node"],
+
     // IMPORTANT: Do NOT set removeComments: true.
     // When declaration: true is active, TypeScript strips comments from .js
     // output but PRESERVES them in .d.ts files — that's the correct behavior.
@@ -23,12 +25,19 @@
     // Keeps the published dist/ lean.
     "declarationMap": false,
 
-    // sourceMap: keep true so runtime stack traces are mappable.
-    // Error monitoring tools (Sentry, Datadog) and Node --enable-source-maps use these.
-    "sourceMap": true
+    "sourceMap": false
   },
 
   // Only compile src/ — tests are excluded from the build artifact entirely.
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "tests", "**/*.test.ts", "**/*.spec.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/tests/",
+    "src/utils/",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "src/playground/",
+    "src/Layer.ts"
+  ]
 }

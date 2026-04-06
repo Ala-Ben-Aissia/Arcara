@@ -1,55 +1,76 @@
 {
   "name": "arcara",
-  "version": "0.1.2",
-  "description": "Zero-dependency Node.js HTTP framework. Type-safe routing, nested routers, and scoped error handling — built with modern TypeScript.",
+  "version": "0.1.7",
+  "description": "A TypeScript-native, zero-dependency Node.js HTTP framework",
+  "author": "Ala Ben Aissia alabenaissia@outlook.com",
+  "license": "MIT",
+  "private": false,
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "keywords": [
-    "node",
     "http",
     "framework",
-    "typescript",
     "router",
-    "zero-dependency",
-    "backend",
-    "server",
     "middleware",
+    "typescript",
+    "node",
+    "zero-dependency",
     "esm"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ala-Ben-Aissia/arcara.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ala-Ben-Aissia/arcara/issues"
+  },
+  "homepage": "https://github.com/Ala-Ben-Aissia/arcara#readme",
   "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "*": [
+        "./dist/index.d.ts"
+      ]
     }
   },
   "files": [
     "dist",
     "README.md",
-    "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
-    "build:watch": "tsup src/index.ts --format cjs,esm --dts --watch",
-    "prepublishOnly": "pnpm run build",
-    "release": "pnpm run build && npm publish"
+    "build": "tsup --config tsup.config.ts",
+    "dev": "tsup --config tsup.config.ts --watch",
+    "test": "node --test --experimental-strip-types tests/**/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.test.json",
+    "typecheck:build": "tsc -p tsconfig.build.json --noEmit",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm clean && pnpm build && pnpm test"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "tsup": "^8.5.1",
-    "typescript": "^5.9.3"
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "license": "MIT",
-  "author": "Ala Ben Aissia",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Ala-Ben-Aissia/arcara.git"
-  },
-  "bugs": {
-    "url": "https://github.com/Ala-Ben-Aissia/arcara/issues"
-  },
-  "homepage": "https://github.com/Ala-Ben-Aissia/arcara#readme"
+  "peerDependencies": {},
+  "dependencies": {}
 }

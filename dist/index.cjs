@@ -441,7 +441,7 @@ function sniffImageMagicBytes(bytes) {
   }
   return null;
 }
-var HTML_PATTERN = /^\s*<!doctype\s+html|^\s*<html[\s>]/i;
+var HTML_PATTERN = /^\s*(<!doctype\s+html|<html[\s>]|<[a-z][\w-]*[^>]*>)/i;
 var SVG_PATTERN = /^\s*<svg[\s>]/i;
 var CSS_PATTERN = /^\s*(@charset|@import|@media|@keyframes|[.#][\w-]+\s*\{)/;
 function sniffString(s) {

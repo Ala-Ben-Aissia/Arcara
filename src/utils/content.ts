@@ -119,7 +119,7 @@ function sniffImageMagicBytes(bytes: Uint8Array) {
 
 // Intentionally loose patterns — we're doing content-type detection,
 // not validation. The point is to avoid sending text/plain for markup.
-const HTML_PATTERN = /^\s*<!doctype\s+html|^\s*<html[\s>]/i;
+const HTML_PATTERN = /^\s*(<!doctype\s+html|<html[\s>]|<[a-z][\w-]*[^>]*>)/i;
 const SVG_PATTERN = /^\s*<svg[\s>]/i;
 const CSS_PATTERN = /^\s*(@charset|@import|@media|@keyframes|[.#][\w-]+\s*\{)/;
 

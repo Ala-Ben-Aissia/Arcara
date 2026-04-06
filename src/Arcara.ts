@@ -1,13 +1,13 @@
 import http from 'node:http';
 import { Layer } from './Layer.js';
-import type { HttpMethod } from './types.js';
-import { ArcaraError } from './types.js';
+import { type HttpMethod, ArcaraOptions, HttpError } from './types.js';
 import { detectContentType } from './utils/content.js';
 import { logger } from './utils/logger.js';
 import { safeWrite } from './utils/stream.js';
 import { validateJson, validateStatus } from './utils/validation.js';
 
 const TIMEOUT_MS = 30_000;
+const BODY_LIMIT = 1_048_576;
 
 // Augmented once at module load time — not per-request, zero overhead.
 // Proto methods must never be called from the default errorHandler path
@@ -99,9 +99,13 @@ proto.send = function (input: unknown) {
 
 export class Arcara extends Layer {
   private readonly server: http.Server;
+  options: ArcaraOptions;
 
-  constructor() {
+  constructor(
+    options: ArcaraOptions = { timeout: TIMEOUT_MS, bodyLimit: 1_048_576 },
+  ) {
     super();
+    this.options = options;
     this.server = http.createServer(this.handleRequest.bind(this));
   }
 
@@ -122,7 +126,6 @@ export class Arcara extends Layer {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       let size = 0;
-      const LIMIT = 1024 * 1024; // 1MB
       let resolved = false;
 
       const cleanup = () => {
@@ -134,11 +137,11 @@ export class Arcara extends Layer {
 
       const onData = (chunk: Buffer) => {
         size += chunk.byteLength;
-        if (size > LIMIT) {
+        if (size > (this.options.bodyLimit || BODY_LIMIT)) {
           resolved = true;
           req.pause();
           cleanup();
-          return reject(new ArcaraError(413, 'Payload Too Large'));
+          return reject(new HttpError(413, 'Payload Too Large'));
         }
         chunks.push(chunk);
       };
@@ -168,7 +171,7 @@ export class Arcara extends Layer {
             req.body = raw;
           }
         } catch {
-          return reject(new ArcaraError(400, 'Invalid Request Body'));
+          return reject(new HttpError(400, 'Invalid Request Body'));
         }
 
         resolve();
@@ -178,7 +181,7 @@ export class Arcara extends Layer {
         if (resolved) return;
         resolved = true;
         cleanup();
-        reject(new ArcaraError(400, 'Request Error', err));
+        reject(new HttpError(400, 'Request Error', err));
       };
 
       // Client disconnected mid-stream — not a server error, resolve silently.
@@ -242,7 +245,7 @@ export class Arcara extends Layer {
         res.statusCode = 408;
         res.end(JSON.stringify({ error: 'Request Timeout' }));
       }
-    }, TIMEOUT_MS);
+    }, this.options.timeout ?? TIMEOUT_MS);
 
     // 3. Single finish listener covers every exit path uniformly —
     //    success, error, timeout, early return. No per-branch cleanup needed.
@@ -281,7 +284,7 @@ export class Arcara extends Layer {
       // (i.e. the user's errorHandler itself threw). Bypass all proto
       // methods entirely to avoid a second throw cascade.
       if (!res.writableEnded) {
-        res.statusCode = e instanceof ArcaraError ? e.status : 500;
+        res.statusCode = e instanceof HttpError ? e.status : 500;
         res.setHeader('content-type', 'application/json; charset=utf-8');
         res.end(JSON.stringify({ error: 'Internal Server Error' }));
       }
@@ -327,5 +330,9 @@ export class Arcara extends Layer {
       callback?.();
     });
     return this;
+  }
+
+  close(callback?: (err?: Error | undefined) => void) {
+    this.server.close(callback);
   }
 }

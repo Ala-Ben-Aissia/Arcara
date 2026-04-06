@@ -12,6 +12,8 @@
     "moduleResolution": "NodeNext",
     "target": "ES2023", // Node 22 supports everything in ES2023
 
+    "types": ["@types/node"],
+
     // ── Type safety ──────────────────────────────────────────────────────────
     "strict": true, // enables all strict checks as a baseline
     "noUncheckedIndexedAccess": true, // arr[0] is T | undefined, not T
@@ -28,6 +30,6 @@
     "removeComments": false, // keep JSDoc in dist for IDE tooltips
     "skipLibCheck": true // don't type-check node_modules .d.ts files
   },
-  "include": ["src"],
+  "include": ["src", "tests"],
   "exclude": ["node_modules", "dist", "src/playground"]
 }

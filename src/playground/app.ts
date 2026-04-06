@@ -16,7 +16,7 @@
  *   - HEAD / OPTIONS introspection
  */
 
-import { Arcara, Middleware, Router } from '../index';
+import { Arcara, Middleware, Router } from '../index.js';
 
 // ── Fake DB ──────────────────────────────────────────────────────────────────
 
@@ -149,3 +149,9 @@ app.post('/form', (req, res) => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 app.listen(3000, 'localhost');
+
+/**
+ * hey please save me the types configuration is a disastrous, i published the package and tried to use it and there is no autocompletion when i try to access property of req using req. or res.
+
+so please all TS related configuration also fix TSUP config and everything related to the build flow. Also fix error propagation cause when i throw new Error() in some Middleware or routeHandler the response returns with 200 code (unless consumer explicitly returns res.status(400).json(error: "Some Error Occurred"))...
+ */

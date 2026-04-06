@@ -1,16 +1,17 @@
-import type http from 'node:http';
-import type {
-  Dispatchable,
-  ErrorHandler,
-  ExtractParams,
-  HttpMethod,
-  Middleware,
-  Route,
-  RouteHandler,
-  StoredChild,
-  StoredMiddleware,
+import {
+  type ArcaraRequest,
+  type ArcaraResponse,
+  type Dispatchable,
+  type ErrorHandler,
+  type ExtractParams,
+  type HttpMethod,
+  type Middleware,
+  type Route,
+  type RouteHandler,
+  type StoredChild,
+  type StoredMiddleware,
+  HttpError,
 } from './types.js';
-import { ArcaraError } from './types.js';
 import { logger } from './utils/logger.js';
 import { compilePath, RadixTree } from './utils/routing.js';
 
@@ -19,9 +20,12 @@ export abstract class Layer implements Dispatchable {
   protected middlewares: StoredMiddleware[] = [];
   protected children: StoredChild[] = [];
 
-  // Default error handler must never use proto methods (res.status, res.json) —
-  // those can throw on invalid state, and this is the last line of defense.
-  protected errorHandler: ErrorHandler = (err, _req, res) => {
+  /**
+   * Default error handler — intentionally avoids `res.status()` / `res.json()`
+   * since this is the last line of defense and those can throw on invalid state.
+   * Raw `statusCode` + `end()` only.
+   */
+  protected errorHandler: ErrorHandler = (err, _req, res, _next) => {
     if (!res.writableEnded) {
       res.statusCode = err.status ?? 500;
       res.setHeader('content-type', 'application/json; charset=utf-8');
@@ -31,13 +35,50 @@ export abstract class Layer implements Dispatchable {
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
+  /**
+   * Registers a custom error handler for this layer.
+   * Receives a normalized `HttpError` — always has `status` and `message`.
+   * Called when any handler in the chain throws or passes an error to `next()`.
+   *
+   * @example
+   * app.onError((err, req, res, next) => {
+   *   res.status(err.status).json({ error: err.message, details: err.details });
+   * });
+   */
   onError(handler: ErrorHandler): this {
     this.errorHandler = handler;
     return this;
   }
 
+  /**
+   * Registers a global middleware (no prefix).
+   * Runs for every request in registration order.
+   *
+   * @example
+   * app.use(corsMiddleware());
+   */
   use(handler: Middleware): this;
-  use(prefix: `/${string}`, handler: Middleware | Layer): this;
+
+  /**
+   * Registers a middleware scoped to a path prefix.
+   * Runs for any request whose pathname starts with `prefix`.
+   *
+   * @example
+   * app.use('/api', authMiddleware);
+   */
+  use(prefix: `/${string}`, handler: Middleware): this;
+
+  /**
+   * Mounts a child `Layer` (sub-router) at a path prefix.
+   * The child receives a prefix-stripped pathname.
+   *
+   * @example
+   * const users = new Router();
+   * users.get('/:id', getUser);
+   * app.use('/users', users);
+   */
+  use(prefix: `/${string}`, handler: Layer): this;
+
   use(
     prefixOrHandler: `/${string}` | Middleware,
     handler?: Middleware | Layer,
@@ -63,6 +104,15 @@ export abstract class Layer implements Dispatchable {
     return this;
   }
 
+  /**
+   * Registers a GET route handler.
+   * Route params are statically inferred from the path string.
+   *
+   * @example
+   * app.get('/users/:id', (req, res) => {
+   *   res.json({ id: req.params.id });
+   * });
+   */
   get<Path extends string>(
     path: Path,
     ...handlers: RouteHandler<ExtractParams<Path>, 'GET'>[]
@@ -70,6 +120,15 @@ export abstract class Layer implements Dispatchable {
     return this.pushRoute(path, 'GET', handlers);
   }
 
+  /**
+   * Registers a POST route handler.
+   * `req.body` is typed as `unknown` for POST routes.
+   *
+   * @example
+   * app.post('/users', (req, res) => {
+   *   res.status(201).json(req.body);
+   * });
+   */
   post<Path extends string>(
     path: Path,
     ...handlers: RouteHandler<ExtractParams<Path>, 'POST'>[]
@@ -77,6 +136,12 @@ export abstract class Layer implements Dispatchable {
     return this.pushRoute(path, 'POST', handlers);
   }
 
+  /**
+   * Registers a PUT route handler.
+   *
+   * @example
+   * app.put('/users/:id', (req, res) => { ... });
+   */
   put<Path extends string>(
     path: Path,
     ...handlers: RouteHandler<ExtractParams<Path>, 'PUT'>[]
@@ -84,6 +149,12 @@ export abstract class Layer implements Dispatchable {
     return this.pushRoute(path, 'PUT', handlers);
   }
 
+  /**
+   * Registers a PATCH route handler.
+   *
+   * @example
+   * app.patch('/users/:id', (req, res) => { ... });
+   */
   patch<Path extends string>(
     path: Path,
     ...handlers: RouteHandler<ExtractParams<Path>, 'PATCH'>[]
@@ -91,6 +162,12 @@ export abstract class Layer implements Dispatchable {
     return this.pushRoute(path, 'PATCH', handlers);
   }
 
+  /**
+   * Registers a DELETE route handler.
+   *
+   * @example
+   * app.delete('/users/:id', (req, res) => { ... });
+   */
   delete<Path extends string>(
     path: Path,
     ...handlers: RouteHandler<ExtractParams<Path>, 'DELETE'>[]
@@ -101,19 +178,24 @@ export abstract class Layer implements Dispatchable {
   // ── Dispatch ────────────────────────────────────────────────────────────────
 
   /**
-   * Recursively dispatches a request through this layer's middlewares,
-   * routes, and mounted child layers.
+   * Recursively dispatches a request through middlewares, routes,
+   * and mounted child layers in order:
    *
-   * Called by Arcara.handleRequest at the root and by parent layers
-   * on children during tree traversal.
+   * 1. Prefix-matching middlewares (in registration order)
+   * 2. Own routes (radix tree lookup; HEAD falls back to GET)
+   * 3. Mounted child layers (prefix match → strip prefix → recurse)
+   * 4. 404 / 405 if nothing matched or responded
+   *
+   * Called by `Arcara.handleRequest` at the root and by parent layers
+   * recursing into children. Not intended for direct consumer use.
    */
   public async dispatch(
     pathname: string,
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
+    req: ArcaraRequest,
+    res: ArcaraResponse,
   ): Promise<void> {
     try {
-      // 1. Run prefix-matching middlewares
+      // 1. Prefix-matching middlewares
       const mwStack = this.middlewares
         .filter((mw) => this.matchesPrefix(pathname, mw.prefix))
         .map((mw) => mw.handler);
@@ -121,7 +203,7 @@ export abstract class Layer implements Dispatchable {
       await this.runStack(req, res, mwStack);
       if (res.writableEnded) return;
 
-      // 2. Try own routes — HEAD falls back to GET
+      // 2. Route lookup — HEAD falls back to GET per HTTP spec
       const effectiveMethod = (
         req.method === 'HEAD' ? 'GET' : (req.method ?? 'GET')
       ).toUpperCase() as HttpMethod;
@@ -130,38 +212,35 @@ export abstract class Layer implements Dispatchable {
       const methodMismatch = !match.success && match.code === 405;
 
       if (match.success) {
-        // Merge — parent layers may have already populated params from prefix segments
+        // Merge: parent layers may have already populated params from prefix segments
         req.params = { ...req.params, ...match.params };
         await this.runStack(req, res, match.route.handlers);
         if (!res.writableEnded) res.end();
         return;
       }
 
-      // 3. Recurse into mounted child layers
+      // 3. Child layer recursion
       let childMatched = false;
       for (const child of this.children) {
         const prefixMatch = pathname.match(child.regex);
         if (!prefixMatch) continue;
 
         childMatched = true;
+
+        // Extract params from the prefix itself (e.g. /orgs/:orgId/...)
         const prefixParams = Object.fromEntries(
           child.paramNames.map((name, i) => [name, prefixMatch[i + 1] ?? '']),
         );
         req.params = { ...req.params, ...prefixParams };
 
-        // Strip matched prefix — child sees a root-relative pathname
+        // Strip matched prefix — child sees root-relative pathname
         const stripped = pathname.slice(prefixMatch[0]!.length) || '/';
         await child.layer.dispatch(stripped, req, res);
         if (res.writableEnded) return;
       }
 
-      // 4. Nothing matched — 405 if path existed with wrong method on own
-      //    routes and no child router claimed the prefix, else 404.
-      //    If a child matched the prefix (childMatched) but didn't write a
-      //    response, its own dispatch already threw and was caught internally
-      //    — we only reach here if the child called next() through without
-      //    responding, which falls through to 404.
-      throw new ArcaraError(
+      // 4. Nothing matched — 405 if path existed with wrong method, else 404
+      throw new HttpError(
         methodMismatch && !childMatched ? 405 : 404,
         methodMismatch && !childMatched ? 'Method Not Allowed' : 'Not Found',
       );
@@ -171,8 +250,9 @@ export abstract class Layer implements Dispatchable {
   }
 
   /**
-   * Walks the full route tree to collect all HTTP methods registered for
-   * a given pathname. Used by OPTIONS handling in Arcara.
+   * Walks the full route tree (own routes + child layers) to collect
+   * all registered HTTP methods for a given pathname.
+   * Used by `Arcara` to populate the `Allow` header on OPTIONS responses.
    */
   collectAllowedMethods(pathname: string): Set<HttpMethod> {
     const allowed = this.routeTree.collectAllowedMethods(pathname);
@@ -192,72 +272,106 @@ export abstract class Layer implements Dispatchable {
   // ── Protected helpers ───────────────────────────────────────────────────────
 
   /**
-   * Runs an ordered handler stack sequentially via a shared next() dispatcher.
+   * Runs an ordered handler stack sequentially.
    *
-   * Double-next detection: `index` tracks the last handler position that
-   * started executing. If next() is called with i <= index, the same handler
-   * called next() twice.
+   * Each handler receives a `next()` function that advances to the chain.
+   * `next(err)` short-circuits to the error handler.
    *
-   * `poisoned` is set to true on detection before handleError is called.
-   * All subsequent dispatch(i) calls become no-ops immediately — this is
-   * necessary because `return` inside the inner closure only exits that
-   * closure, not the still-executing async handler that made the second
-   * next() call. Without the flag, that handler continues running after the
-   * error response has already been sent.
+   * Error propagation contract:
+   * - Handler throws synchronously  → caught by `await handler(...)` try/catch
+   * - Handler throws asynchronously → caught by `await handler(...)` (Promise rejection)
+   * - Handler calls `next(err)`     → stored in `nextError`, re-thrown after the
+   *   handler's own Promise settles. This is the critical fix: we cannot throw
+   *   synchronously inside the `next` callback and expect it to surface reliably,
+   *   because the handler may not `await next()` — it may fire-and-forget it.
+   *   Storing the error and re-throwing after `await handler(...)` guarantees
+   *   it always reaches `dispatch`'s catch block.
+   *
+   * Double-next detection: `poisoned` flag ensures the error path is entered
+   * exactly once even if the outer async frame continues after the second call.
    */
   protected async runStack(
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
+    req: ArcaraRequest,
+    res: ArcaraResponse,
     stack: RouteHandler<any>[],
   ): Promise<void> {
     let index = -1;
     let poisoned = false;
 
-    const dispatch = async (i: number): Promise<void> => {
+    const run = async (i: number): Promise<void> => {
       if (poisoned) return;
 
       if (i <= index) {
         poisoned = true;
-        this.handleError(
-          new ArcaraError(
-            500,
-            `next() called multiple times in handler at position ${index}`,
-          ),
-          req,
-          res,
+        throw new HttpError(
+          500,
+          `next() called multiple times in handler at position ${index}`,
         );
-        return;
       }
 
       index = i;
       if (i === stack.length) return;
-      await stack[i]?.(req, res, () => dispatch(i + 1));
+
+      // Capture any error passed to next() so we can re-throw it after
+      // the handler's own async frame has settled. This is the correct
+      // approach: throwing synchronously inside the next() callback only
+      // works when the handler does `await next()`. For handlers that call
+      // `next(err)` without awaiting, the throw would be lost in an
+      // unhandled branch. Storing + re-throwing after `await handler(...)`
+      // guarantees propagation in all cases.
+      let nextError: unknown = undefined;
+      let nextCalled = false;
+
+      const next = (err?: unknown): void => {
+        nextCalled = true;
+        if (err !== undefined) {
+          // Normalize immediately so downstream always receives an HttpError
+          nextError =
+            err instanceof HttpError
+              ? err
+              : err instanceof Error
+                ? new HttpError(500, err.message, err)
+                : new HttpError(500, String(err));
+        }
+        // Do NOT call run(i + 1) here synchronously — let the await below
+        // drive advancement so the call stack stays linear and predictable.
+      };
+
+      await stack[i]?.(req, res, next);
+
+      // If next(err) was called, propagate the error now that the handler settled
+      if (nextError !== undefined) throw nextError;
+
+      // If next() was called without error, advance the chain
+      if (nextCalled && nextError === undefined) {
+        await run(i + 1);
+      }
+      // If next() was never called, the handler ended the response itself —
+      // do nothing, dispatch() will check writableEnded after runStack returns.
     };
 
-    await dispatch(0);
+    await run(0);
   }
 
   /**
-   * Normalizes any thrown value to ArcaraError, logs it, and delegates
-   * to the active errorHandler.
+   * Normalizes any thrown value to `HttpError`, logs 5xx errors,
+   * and delegates to the registered `errorHandler`.
    *
-   * 404/405 are not logged — they are normal routing outcomes, not failures.
-   * For 500s, logs the full ArcaraError (not just the cause) so status and
-   * message are always visible alongside the cause chain.
+   * 404 and 405 are intentionally not logged — they are normal routing
+   * outcomes. 5xx errors log the full error including cause chain.
    */
   protected handleError(
     e: unknown,
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
+    req: ArcaraRequest,
+    res: ArcaraResponse,
   ): void {
-    const err =
-      e instanceof ArcaraError
-        ? e
-        : new ArcaraError(500, e instanceof Error ? e.message : String(e), e);
+    const err = HttpError.from(e);
 
     if (err.status >= 500) logger.error(err);
 
-    if (!res.writableEnded) this.errorHandler(err, req, res);
+    if (!res.writableEnded) {
+      this.errorHandler(err, req, res, () => {});
+    }
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────
@@ -273,9 +387,9 @@ export abstract class Layer implements Dispatchable {
   }
 
   /**
-   * Returns true if pathname falls under the given prefix.
-   * '/'      → matches everything (global middlewares)
-   * '/api'   → matches '/api' and '/api/users' but not '/api-v2'
+   * Returns true if `pathname` falls under `prefix`.
+   * - `'/'`     → matches everything (global middlewares)
+   * - `'/api'`  → matches `/api` and `/api/users` but not `/api-v2`
    */
   private matchesPrefix(pathname: string, prefix: string): boolean {
     if (prefix === '/') return true;
@@ -283,9 +397,9 @@ export abstract class Layer implements Dispatchable {
   }
 
   /**
-   * Strips trailing slashes. Preserves '/' for global middleware prefix.
-   * '/api/v1/' → '/api/v1'
-   * '/'        → '/'
+   * Strips trailing slashes. Preserves `'/'` for global middleware prefix.
+   * - `'/api/v1/'` → `'/api/v1'`
+   * - `'/'`        → `'/'`
    */
   private normalizePrefix(prefix: string): string {
     return prefix === '/' ? '/' : prefix.replace(/\/+$/, '');

@@ -1,80 +1,73 @@
+import { HttpError } from '../types.js';
+
+// ── Result types ──────────────────────────────────────────────────────────────
+
 /**
- * Validates an HTTP status code.
- *
- * Returns { error: RangeError }  if code is outside 100–999.
- * Returns { error: TypeError }   if code is not a finite integer.
- * Returns {}                     if code is valid.
- *
- * Returns { error } rather than throwing — callers decide behavior.
- * proto.status throws on invalid codes (programmer error).
- * The default errorHandler writes raw statusCode without validation.
+ * Result type for operations that may fail without throwing.
+ * Callers decide how to handle the error — no hidden control flow.
  */
-export function validateStatus(code: number): {
-  error?: RangeError | TypeError;
-} {
-  if (!Number.isInteger(code) || !Number.isFinite(code)) {
+type Result<T> =
+  | { data: T; error: undefined }
+  | { data: undefined; error: HttpError };
+
+// ── validateStatus ────────────────────────────────────────────────────────────
+
+/**
+ * Validates that `code` is a legal HTTP status code (100–599).
+ *
+ * Returns a result object rather than throwing — `proto.status` throws
+ * on the returned error so the throw site is explicit and visible.
+ *
+ * @example
+ * const { error } = validateStatus(999);
+ * if (error) throw error; // throws HttpError(500, ...)
+ */
+export function validateStatus(code: number): { error?: HttpError } {
+  if (!Number.isInteger(code) || code < 100 || code > 599) {
     return {
-      error: new TypeError(
-        `Status code must be a finite integer, got: ${code}`,
-      ),
-    };
-  }
-  if (code < 100 || code > 999) {
-    return {
-      error: new RangeError(
-        `Status code must be between 100 and 999, got: ${code}`,
+      error: new HttpError(
+        500,
+        `Invalid status code: ${code}. Must be an integer between 100 and 599.`,
       ),
     };
   }
   return {};
 }
 
-/**
- * Safely serializes a value to a JSON string.
- *
- * Catches values that JSON.stringify cannot handle:
- * - functions        → stringify silently drops them in objects, returns
- *                      undefined at top level
- * - BigInt           → throws TypeError at runtime
- * - circular refs    → throws TypeError at runtime
- *
- * Returns { data: string } on success.
- * Returns { error: TypeError } on failure.
- *
- * Never throws — callers decide how to handle the error.
- */
-export function validateJson(input: unknown): {
-  data?: string;
-  error?: TypeError;
-} {
-  // Top-level functions and undefined serialize to nothing — treat as error
-  // so callers can make an explicit decision rather than sending an empty body.
-  if (typeof input === 'function' || typeof input === 'undefined') {
-    return {
-      error: new TypeError(
-        `Value of type "${typeof input}" is not JSON serializable`,
-      ),
-    };
-  }
+// ── validateJson ──────────────────────────────────────────────────────────────
 
+/**
+ * Safely serializes `input` to a JSON string.
+ *
+ * Handles two failure cases:
+ * 1. `input` contains circular references → JSON.stringify throws TypeError
+ * 2. `input` contains a BigInt value → JSON.stringify throws TypeError
+ *
+ * Returns a Result — callers log the error and fall back to a safe
+ * serialized error body without re-throwing.
+ *
+ * @example
+ * const { data, error } = validateJson({ id: 1 });
+ * if (error) { ... } // serialization failed
+ * res.write(data);
+ */
+export function validateJson(input: unknown): Result<string> {
   try {
     const data = JSON.stringify(input);
-
-    // JSON.stringify returns undefined (not string) for top-level symbols.
-    // TypeScript types it as string but the runtime can produce undefined.
+    // JSON.stringify returns undefined for functions, symbols, undefined values
     if (data === undefined) {
       return {
-        error: new TypeError(
-          `Value of type "${typeof input}" is not JSON serializable`,
-        ),
+        data: undefined,
+        error: new HttpError(500, 'Value is not JSON-serializable'),
       };
     }
-
-    return { data };
+    return { data, error: undefined };
   } catch (e) {
-    // BigInt → "Do not know how to serialize a BigInt"
-    // Circular → "Converting circular structure to JSON"
-    const message = e instanceof Error ? e.message : String(e);
-    return { error: new TypeError(`JSON serialization failed: ${message}`) };
+    const message =
+      e instanceof Error ? e.message : 'JSON serialization failed';
+    return {
+      data: undefined,
+      error: new HttpError(500, message, e),
+    };
   }
 }

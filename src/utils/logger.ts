@@ -1,4 +1,4 @@
-import { type HttpMethod, ArcaraError } from '../types.js';
+import { type HttpMethod, HttpError } from '../types.js';
 
 const color = {
   bold: (s: string) => `\x1b[1m${s}\x1b[0m`,
@@ -69,7 +69,7 @@ export const logger = {
     let name = isError ? e.name : 'Error';
     const message = isError ? e.message : String(e);
 
-    if (e instanceof ArcaraError) {
+    if (e instanceof HttpError) {
       name = `${name} (${e.status})`;
     }
 

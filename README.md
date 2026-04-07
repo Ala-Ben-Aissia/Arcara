@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/arcara)](https://npmjs.com/package/arcara)
 [![license](https://img.shields.io/npm/l/arcara)](./LICENSE)
 
-A TypeScript-first, zero-dependency Node.js HTTP framework — tiny, fast, and fully typed for everyday APIs.
+A TypeScript-first, zero-runtime-dependency Node.js HTTP framework — tiny, fast, and fully typed for everyday APIs.
 
 ## Install
 
@@ -150,7 +150,7 @@ Minimal, practical, and ready for production usage — import `arcara`, write ha
 
 ## Static files
 
-Arcara includes a small, zero-dependency static middleware useful for
+Arcara includes a small, zero-runtime-dependency static middleware useful for
 serving assets from disk in simple deployments or local demos. The middleware
 is implemented at `src/utils/static.ts` and supports:
 

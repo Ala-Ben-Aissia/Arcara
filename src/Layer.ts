@@ -198,7 +198,17 @@ export abstract class Layer implements Dispatchable {
       // 1. Prefix-matching middlewares
       const mwStack = this.middlewares
         .filter((mw) => this.matchesPrefix(pathname, mw.prefix))
-        .map((mw) => mw.handler);
+        .map((mw): Middleware => {
+          if (mw.prefix === '/') return mw.handler;
+
+          return async (req, res, next) => {
+            const original = req.url ?? '/';
+            req.url = original.slice(mw.prefix.length) || '/';
+            return Promise.resolve(mw.handler(req, res, next)).finally(() => {
+              req.url = original;
+            });
+          };
+        });
 
       await this.runStack(req, res, mwStack);
       if (res.writableEnded) return;

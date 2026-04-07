@@ -31,8 +31,18 @@ const MIME_TYPES: Record<string, string> = {
   '.pdf': 'application/pdf',
 };
 
-// Small in-memory sniff cache keyed by path+mtime+size
+// LRU-capped sniff cache keyed by path+mtime+size
+const SNIFF_CACHE_MAX = 500;
 const sniffCache = new Map<string, string>();
+
+function sniffCacheSet(key: string, value: string): void {
+  if (sniffCache.size >= SNIFF_CACHE_MAX) {
+    // Map preserves insertion order — evict oldest entry
+    const oldest = sniffCache.keys().next().value;
+    if (oldest !== undefined) sniffCache.delete(oldest);
+  }
+  sniffCache.set(key, value);
+}
 
 export function serveStatic(
   root: string,
@@ -63,7 +73,9 @@ export function serveStatic(
     }
 
     // Resolve file (handle directories → index.html)
-    let st;
+    let st: fsp.FileHandle extends never
+      ? never
+      : Awaited<ReturnType<typeof fsp.stat>>;
     try {
       st = await fsp.stat(resolved);
       if (st.isDirectory()) {
@@ -87,26 +99,47 @@ export function serveStatic(
       if (cached) {
         contentType = cached;
       } else {
-        // Read a small prefix to sniff
         const fd = await fsp.open(absPath, 'r');
         try {
           const len = Math.min(1024, Number(st.size) || 1024);
           const buf = Buffer.alloc(len);
           const { bytesRead } = await fd.read(buf, 0, len, 0);
-          const slice = buf.slice(0, bytesRead);
+          const slice = buf.subarray(0, bytesRead);
           contentType =
-            detectContentType(slice, req as any) || 'application/octet-stream';
-          sniffCache.set(cacheKey, contentType);
+            detectContentType(slice, req) ?? 'application/octet-stream';
+          sniffCacheSet(cacheKey, contentType);
         } finally {
           await fd.close();
         }
       }
     }
 
-    res.setHeader('Content-Type', contentType || 'application/octet-stream');
-    res.setHeader('Content-Length', String(st.size));
+    // ETag and conditional GET support
+    const etag = `"${st.mtimeMs.toString(16)}-${st.size.toString(16)}"`;
+    const lastModified = new Date(st.mtimeMs).toUTCString();
+
+    res.setHeader('ETag', etag);
+    res.setHeader('Last-Modified', lastModified);
+
+    const ifNoneMatch = req.headers['if-none-match'];
+    const ifModifiedSince = req.headers['if-modified-since'];
+
+    if (
+      (ifNoneMatch && ifNoneMatch === etag) ||
+      (!ifNoneMatch &&
+        ifModifiedSince &&
+        new Date(ifModifiedSince) >= new Date(st.mtimeMs))
+    ) {
+      res.statusCode = 304;
+      res.end();
+      return;
+    }
+
     const isHtml =
       (contentType ?? '').startsWith('text/html') || ext === '.html';
+
+    res.setHeader('Content-Type', contentType ?? 'application/octet-stream');
+    res.setHeader('Content-Length', String(st.size));
     res.setHeader(
       'Cache-Control',
       isHtml
@@ -121,14 +154,15 @@ export function serveStatic(
 
     const stream = fs.createReadStream(absPath);
     try {
-      await pipeline(stream, res as any);
+      await pipeline(stream, res);
     } catch (err) {
-      if (!res.writableEnded) {
-        try {
-          res.statusCode = 500 as any;
-        } catch {}
+      // Headers already flushed — partial body written, can't send a 500.
+      // Destroy the socket to signal the client something went wrong.
+      if (res.headersSent) {
+        res.destroy(err as Error);
+        return;
       }
-      return next(err as any);
+      return next(err);
     }
   };
 }

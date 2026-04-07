@@ -1,5 +1,5 @@
 /**
- * Arcara — A TypeScript-native, zero-dependency Node.js HTTP framework.
+ * Arcara — A TypeScript-native, zero-runtime-dependency Node.js HTTP framework.
  *
  * @example
  * ```ts

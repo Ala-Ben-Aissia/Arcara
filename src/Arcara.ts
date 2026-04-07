@@ -5,7 +5,12 @@ import {
   createServer,
 } from 'http';
 import { Layer } from './Layer.js';
-import type { ArcaraOptions, HttpMethod } from './types.js';
+import type {
+  ArcaraOptions,
+  ArcaraRequest,
+  ArcaraResponse,
+  HttpMethod,
+} from './types.js';
 import { HttpError } from './types.js';
 import { detectContentType } from './utils/content.js';
 import { logger } from './utils/logger.js';
@@ -194,19 +199,19 @@ export class Arcara extends Layer {
 
         try {
           if (contentType.includes('application/json')) {
-            req.body = JSON.parse(raw.toString('utf-8'));
+            (req as ArcaraRequest).body = JSON.parse(raw.toString('utf-8'));
           } else if (
             contentType.includes('application/x-www-form-urlencoded')
           ) {
             // URLSearchParams handles '+' as space, encoded '=' in values,
             // and all other edge cases that manual splitting misses.
-            req.body = Object.fromEntries(
+            (req as ArcaraRequest).body = Object.fromEntries(
               new URLSearchParams(raw.toString('utf-8')),
             );
           } else if (contentType.startsWith('text/')) {
-            req.body = raw.toString('utf-8');
+            (req as ArcaraRequest).body = raw.toString('utf-8');
           } else {
-            req.body = raw;
+            (req as ArcaraRequest).body = raw;
           }
         } catch {
           return reject(new HttpError(400, 'Invalid Request Body'));
@@ -271,8 +276,8 @@ export class Arcara extends Layer {
     const { method, pathname, query } = this.extractRequestInfo(req);
 
     // Initialize augmented fields — never undefined downstream
-    req.params = {};
-    req.query = query;
+    (req as ArcaraRequest).params = {};
+    (req as ArcaraRequest).query = query;
 
     const timeout = setTimeout(() => {
       if (!res.writableEnded) {
@@ -298,7 +303,11 @@ export class Arcara extends Layer {
       // OPTIONS: walk the full route tree for CORS preflight, then fall back
       // to an automatic 204 + Allow header if no explicit handler responded.
       if (method === 'OPTIONS') {
-        // await this.dispatch(pathname, req, res);
+        // await this.dispatch(
+        //   pathname,
+        //   req as ArcaraRequest,
+        //   res as ArcaraResponse,
+        // );
         if (!res.writableEnded) {
           const allowed = this.collectAllowedMethods(pathname);
           allowed.add('OPTIONS');
@@ -314,7 +323,11 @@ export class Arcara extends Layer {
         await this.parseBody(req);
       }
 
-      await this.dispatch(pathname, req, res);
+      await this.dispatch(
+        pathname,
+        req as ArcaraRequest,
+        res as ArcaraResponse,
+      );
     } catch (e) {
       // ClientDisconnectedError: socket is gone, nothing to respond to.
       if (e instanceof ClientDisconnectedError) return;

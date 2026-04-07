@@ -33,5 +33,5 @@
     "ignoreDeprecations": "6.0"
   },
   "include": ["src", "tests"],
-  "exclude": ["node_modules", "dist", "src/playground"]
+  "exclude": ["node_modules", "dist"]
 }

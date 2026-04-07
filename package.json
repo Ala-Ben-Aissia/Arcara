@@ -1,6 +1,6 @@
 {
   "name": "arcara",
-  "version": "0.1.7",
+  "version": "0.1.0",
   "description": "A TypeScript-native, zero-dependency Node.js HTTP framework",
   "author": "Aloulou <alabenaissia@users.noreply.github.com>",
   "license": "MIT",
@@ -70,17 +70,11 @@
     "prepublishOnly": "pnpm clean && pnpm build && pnpm run test"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
     "tsup": "^8.5.1",
-    "typescript": "6.0.2"
+    "typescript": "6.0.2",
+    "@types/node": "^25.5.2"
   },
-  "peerDependencies": {
-    "@types/node": ">=18.0.0"
-  },
-  "dependencies": {},
-  "peerDependenciesMeta": {
-    "@types/node": {
-      "optional": true
-    }
+  "dependencies": {
+    "@types/node": "^25.5.2"
   }
 }

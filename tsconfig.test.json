@@ -17,7 +17,8 @@
     // (e.g. a declared but not-yet-used fixture, a skipped test helper).
     // Remove if you prefer strict discipline in tests too.
     "noUnusedLocals": false,
-    "noUnusedParameters": false
+    "noUnusedParameters": false,
+    "types": ["node"]
 
     // Tests import from src/ via relative paths — same module resolution.
     // If you ever add test utilities under tests/helpers/, add a path alias:

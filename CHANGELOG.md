@@ -7,6 +7,41 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-04-07
+
+### Added
+
+- `serveStatic(root, options)` middleware for serving static assets with safe
+  path resolution, index-file fallback, optional `prefix` mounting, `HEAD`
+  support, streaming via `pipeline`, and extension/magic-byte content-type
+  detection.
+- Improved `detectContentType` behavior and added a small in-memory sniff cache
+  (mtime+size) to avoid repeated I/O for unchanged files.
+- Conditional TypeScript type bridge so exported `ArcaraRequest` /
+  `ArcaraResponse` resolve to real Node types when `@types/node` is present,
+  and to minimal fallback interfaces otherwise.
+- Module augmentations for both `node:http` and `http` so editors with Node
+  typings show `req.params`, `req.query`, `req.body` and `res.status` /
+  `res.json` / `res.send` helpers.
+
+### Changed
+
+- Packaging and type emission: `@types/node` is listed as a peer dependency
+  to make consumer expectations explicit; declaration emission was adjusted to
+  include the conditional type bridge so consumers get stable inference.
+- Static serving now awaits the stream pipeline and guards against writing
+  headers after the response has finished, eliminating subtle HTTP parser
+  races.
+
+### Fixed
+
+- Fixed streaming lifecycle bugs that could produce `HPE_INVALID_CONSTANT`
+  parser errors or header-after-end races by awaiting `pipeline()` and
+  handling errors synchronously.
+- Improved content-type heuristics for unknown extensions and text snippets
+  (HTML/SVG/CSS detection) to avoid incorrect `text/plain` responses.
+- Added tests for static serving and stabilized flaky streaming-related tests.
+
 ## [0.1.1] - 2026-04-06
 
 ### Fixed

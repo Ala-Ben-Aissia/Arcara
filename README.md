@@ -8,6 +8,14 @@ A TypeScript-first, zero-dependency Node.js HTTP framework — tiny, fast, and f
 npm install arcara
 ```
 
+If you use TypeScript in your project, install Node types to get full
+`req`/`res` inference in editors and the compiler:
+
+```bash
+pnpm add -D @types/node
+# or npm: npm i -D @types/node
+```
+
 ## Quick Start
 
 Copy → paste → run.
@@ -40,6 +48,20 @@ app.onError((err, _req, res) => {
 
 app.listen(3000, () => console.log('Listening on :3000'));
 ```
+
+**What's new (0.1.8)**
+
+- Static file serving middleware: `serveStatic(root, { prefix?, index? })` —
+  safe path resolution, index fallback, prefix mounting, HEAD support and
+  streaming via `pipeline` with content sniffing for unknown extensions.
+- Improved content-type detection (`detectContentType`) and a small in-memory
+  sniff cache to avoid repeated reads for unchanged files.
+- TypeScript typing fixes: conditional type bridge and module augmentations
+  (both `node:http` and `http`) so consumers with `@types/node` get full
+  `IncomingMessage` / `ServerResponse` members while other environments still
+  compile with a minimal safe fallback.
+
+See the changelog for full details.
 
 ## API Usage (practical)
 
@@ -121,3 +143,51 @@ const requireAuth = (req, res, next) => {
 ---
 
 Minimal, practical, and ready for production usage — import `arcara`, write handlers, and ship.
+
+## Static files
+
+Arcara includes a small, zero-dependency static middleware useful for
+serving assets from disk in simple deployments or local demos. The middleware
+is implemented at `src/utils/static.ts` and supports:
+
+- safe path resolution and directory index resolution (`index.html` by default)
+- optional `prefix` mounting to scope files to a URL subtree
+- proper `HEAD` handling and `Content-Length` negotiation
+- extension-based MIME map and a magic-byte content sniff fallback via
+  `detectContentType`
+
+Usage (example):
+
+```ts
+import { Arcara } from 'arcara';
+import { serveStatic } from './utils/static.js'; // repo/local import
+
+const app = new Arcara();
+app.use(serveStatic('./public'));
+
+// or mount under a prefix:
+app.use(serveStatic('./public', { prefix: '/static' }));
+```
+
+Note: the middleware lives under `src/utils/static.ts` in this repository. When
+publishing the package this utility is included in the `dist` artifacts and
+can be re-exported from the public API in a future release.
+
+## Testing & development
+
+Run the test-suite and type checks locally:
+
+```bash
+pnpm install
+pnpm test        # runs node:test suites via tsx
+pnpm run typecheck
+pnpm run build   # builds JS + declaration files
+```
+
+If you are contributing, please run tests and typechecks before opening a PR.
+
+## Contributing
+
+Contributions are very welcome. Open an issue to discuss design changes,
+or submit a PR. Please keep changes focused, include tests for new behavior,
+and follow the existing coding style (TypeScript, minimal runtime deps).

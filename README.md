@@ -1,207 +1,123 @@
 # Arcara
 
-[![npm version](https://img.shields.io/npm/v/arcara)](https://npmjs.com/package/arcara)
-[![npm downloads](https://img.shields.io/npm/dm/arcara)](https://npmjs.com/package/arcara)
-[![license](https://img.shields.io/npm/l/arcara)](./LICENSE)
-[![CI](https://github.com/alabenaissia/arcara/actions/workflows/ci.yml/badge.svg)](https://github.com/alabenaissia/arcara/actions/workflows/ci.yml)
-
-A TypeScript-native, zero-dependency Node.js HTTP framework built on raw `node:http`.
-
-- **Zero dependencies** — nothing in `node_modules` at runtime
-- **TypeScript-first** — route params statically inferred from path strings
-- **Composable** — sub-routers via `Layer`, mounted with `app.use()`
-- **Dual CJS/ESM** — works in any modern Node.js project
-
----
+A TypeScript-first, zero-dependency Node.js HTTP framework — tiny, fast, and fully typed for everyday APIs.
 
 ## Install
 
 ```bash
-pnpm add arcara
-# or
 npm install arcara
 ```
 
-**Requirements:** Node.js >= 18.0.0
+## Quick Start
 
----
-
-## Quickstart
+Copy → paste → run.
 
 ```ts
 import { Arcara, HttpError } from 'arcara';
 
 const app = new Arcara();
 
-// Global middleware
+// Simple middleware
 app.use((req, _res, next) => {
-  console.log(`${req.method} ${req.url}`);
+  console.log(req.method, req.url);
   next();
 });
 
-// Typed route params — req.params.id is string, inferred from '/users/:id'
+// Route with inferred path param
 app.get('/users/:id', (req, res) => {
   res.json({ id: req.params.id });
 });
 
-// POST with body
+// POST with parsed body
 app.post('/users', (req, res) => {
   res.status(201).json(req.body);
 });
 
-// Error handler
+// Router-level error handler (overrides default for this sub-tree)
 app.onError((err, _req, res) => {
   res.status(err.status).json({ error: err.message });
 });
 
-app.listen(3000);
+app.listen(3000, () => console.log('Listening on :3000'));
 ```
 
----
+## API Usage (practical)
 
-## API Reference
+- Create app
+  - `const app = new Arcara();`
 
-### `new Arcara(options?)`
+- Middleware / mounting
+  - `app.use(handler)` — global middleware
+  - `app.use('/prefix', handler)` — prefix-scoped middleware
+  - `app.use('/prefix', router)` — mount a `Router` or `Arcara` layer
 
-Creates a new application instance.
+- Routing helpers
+  - `app.get(path, ...handlers)`
+  - `app.post(path, ...handlers)`
+  - `app.put(path, ...handlers)`
+  - `app.patch(path, ...handlers)`
+  - `app.delete(path, ...handlers)`
 
-| Option      | Type     | Default     | Description                          |
-| ----------- | -------- | ----------- | ------------------------------------ |
-| `bodyLimit` | `number` | `1_048_576` | Max request body size in bytes (1MB) |
-| `timeout`   | `number` | `30_000`    | Request timeout in ms (30s)          |
+  Handlers signature:
+
+  ```ts
+  (req, res, next) => void | Promise<void>
+  ```
+
+- Response helpers
+  - `res.status(code)` — returns `this` for chaining
+  - `res.json(value)` — sets `Content-Type: application/json` and ends
+  - `res.send(value)` — auto-detects Content-Type, sets `Content-Length`, ends
+
+  Example:
+
+  ```ts
+  res.status(201).json({ created: true });
+  res.send('plain text or Buffer or object');
+  ```
+
+- Error handling
+  - Register with `app.onError((err, req, res) => { ... })`
+  - Throw `HttpError` to produce an HTTP status + JSON message:
+    ```ts
+    import { HttpError } from 'arcara';
+    throw new HttpError(404, 'Not found');
+    ```
+
+- Server control
+  - `app.listen(port[, host, callback])` — start server
+  - `await app.close()` — graceful shutdown
+
+## Examples (short)
+
+- Mounting a `Router`:
 
 ```ts
-const app = new Arcara({ bodyLimit: 5 * 1024 * 1024, timeout: 10_000 });
+import { Router } from 'arcara';
+const users = new Router();
+users.get('/:id', (req, res) => res.json({ id: req.params.id }));
+app.use('/users', users);
 ```
 
----
-
-### Routing
-
-All route methods accept multiple stacked handlers (middleware chain per route):
+- Auth middleware:
 
 ```ts
-app.get(path, ...handlers);
-app.post(path, ...handlers);
-app.put(path, ...handlers);
-app.patch(path, ...handlers);
-app.delete(path, ...handlers);
+const requireAuth = (req, res, next) => {
+  const token = req.headers['x-api-key'];
+  if (!token || token !== 'secret')
+    return res.status(401).json({ error: 'Unauthorized' });
+  next();
+};
 ```
 
-Route params are statically typed:
+## Notes (usage-relevant)
 
-```ts
-// req.params.id and req.params.postId are inferred as string
-app.get('/users/:id/posts/:postId', (req, res) => {
-  const { id, postId } = req.params; // ✅ typed
-});
-```
+- Path params are inferred from literal route strings: `req.params.id` is typed when you define `'/users/:id'`.
+- `req.body` is populated for POST/PUT/PATCH handlers; for other methods it is `undefined`.
+- `HEAD` requests fall back to the `GET` handler automatically.
+- `res.send()` detects string/Buffer/Uint8Array/ArrayBuffer/object and sets an appropriate `Content-Type` and `Content-Length`.
+- Throw `HttpError(status, message)` or call `next(err)` to reach the registered error handler.
 
 ---
 
-### Middleware
-
-```ts
-// Global — runs for all requests
-app.use(myMiddleware);
-
-// Prefix-scoped — runs for /api and /api/*
-app.use('/api', authMiddleware);
-
-// Mounted sub-router
-import { Layer } from 'arcara';
-
-class UserRouter extends Layer {
-  constructor() {
-    super();
-    this.get('/:id', (req, res) => res.json({ id: req.params.id }));
-  }
-}
-
-app.use('/users', new UserRouter());
-```
-
----
-
-### Request
-
-| Property     | Type                     | Description                       |
-| ------------ | ------------------------ | --------------------------------- |
-| `req.params` | `Record<string, string>` | Named route params                |
-| `req.query`  | `Record<string, string>` | Parsed query string               |
-| `req.body`   | `unknown`                | Parsed body (POST/PUT/PATCH only) |
-
-Body parsing is automatic for `POST`, `PUT`, `PATCH`:
-
-| `Content-Type`                      | `req.body` type          |
-| ----------------------------------- | ------------------------ |
-| `application/json`                  | `object`                 |
-| `application/x-www-form-urlencoded` | `Record<string, string>` |
-| `text/*`                            | `string`                 |
-| anything else                       | `Buffer`                 |
-
----
-
-### Response
-
-```ts
-res.status(201); // set status code, chainable
-res.json({ id: 1 }); // serialize to JSON, end response
-res.send('hello'); // auto content-type, end response
-res.send(buffer); // application/octet-stream
-res.status(201).json({ created: true }); // chained
-```
-
----
-
-### Error Handling
-
-Throw `HttpError` anywhere in a handler — Arcara catches and routes it to your error handler:
-
-```ts
-import { HttpError } from 'arcara';
-
-app.get('/users/:id', (req, res) => {
-  const user = db.find(req.params.id);
-  if (!user) throw new HttpError(404, 'User not found');
-  res.json(user);
-});
-
-app.onError((err, _req, res) => {
-  res.status(err.status).json({
-    error: err.message,
-    ...(err.details ? { details: err.details } : {}),
-  });
-});
-```
-
-Pass errors through `next()`:
-
-```ts
-app.use((req, res, next) => {
-  verifyToken(req).catch(next); // next(err) → error handler
-});
-```
-
----
-
-### Graceful Shutdown
-
-```ts
-process.on('SIGTERM', async () => {
-  await app.close();
-  process.exit(0);
-});
-```
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
-
----
-
-## License
-
-[MIT](./LICENSE) © 2025 Aloulou
+Minimal, practical, and ready for production usage — import `arcara`, write handlers, and ship.

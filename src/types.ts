@@ -59,70 +59,104 @@ export type ExtractParams<Path extends string> =
  * Covers all members accessed by Arcara internals and handler code.
  * @internal
  */
-// export interface NodeFallbackRequest {
-//   method?: string;
-//   url?: string;
-//   headers: Record<string, string | string[] | undefined>;
-//   socket: { destroyed: boolean } | null;
-//   on(event: string, listener: (...args: unknown[]) => void): this;
-//   removeListener(event: string, listener: (...args: unknown[]) => void): this;
-//   pause(): this;
-//   destroy(error?: Error): this;
-// }
+export interface NodeFallbackRequest {
+  method?: string;
+  url?: string;
+  headers: Record<string, string | string[] | undefined>;
+  socket: { destroyed: boolean } | null;
+  on(event: string, listener: (...args: unknown[]) => void): this;
+  removeListener(event: string, listener: (...args: unknown[]) => void): this;
+  pause(): this;
+  destroy(error?: Error): this;
+}
 
 /**
  * Minimal response shape used when `@types/node` is not available.
  * Covers all members accessed by Arcara internals and handler code.
  * @internal
  */
-// export interface NodeFallbackResponse {
-//   statusCode: number;
-//   writableEnded: boolean;
-//   destroyed: boolean;
-//   req: NodeFallbackRequest;
-//   setHeader(name: string, value: number | string | readonly string[]): this;
-//   getHeader(name: string): number | string | string[] | undefined;
-//   removeHeader(name: string): this;
-//   writeHead(
-//     statusCode: number,
-//     headers?: Record<string, string | number | readonly string[]>,
-//   ): this;
-//   write(
-//     chunk: string | Buffer,
-//     callback?: (err?: Error | null) => void,
-//   ): boolean;
-//   end(chunk?: string | Buffer | (() => void), callback?: () => void): this;
-//   once(event: string, listener: (...args: unknown[]) => void): this;
-// }
+export interface NodeFallbackResponse {
+  statusCode: number;
+  writableEnded: boolean;
+  destroyed: boolean;
+  req: NodeFallbackRequest;
+  setHeader(name: string, value: number | string | readonly string[]): this;
+  getHeader(name: string): number | string | string[] | undefined;
+  removeHeader(name: string): this;
+  writeHead(
+    statusCode: number,
+    headers?: Record<string, string | number | readonly string[]>,
+  ): this;
+  write(
+    chunk: string | Buffer,
+    callback?: (err?: Error | null) => void,
+  ): boolean;
+  end(chunk?: string | Buffer | (() => void), callback?: () => void): this;
+  once(event: string, listener: (...args: unknown[]) => void): this;
+}
 
-// Conditional bridge: attempt to resolve `node:http` first, then `http`,
-// and finally fall back to our minimal interfaces. We use `typeof import(...)`
-// inside a type position so resolution is attempted by TS only when the
-// consumer has the corresponding type package available; otherwise the
-// conditional reduces to the fallback interfaces.
-// Conditional bridge: resolve to real Node types when @types/node is present,
-// fall back to the minimal interfaces above when it is not.
+// ── Global module augmentation ───────────────────────────────────────────────
 //
-// `http.IncomingMessage` is used as the discriminant — if the `node:http`
-// module resolves successfully, the conditional picks the real types.
-// If not, TypeScript cannot resolve `http.IncomingMessage` and the
-// conditional falls to the right-hand branch (the fallback interfaces).
+// Declares Arcara's additions on Node's built-in types so they are visible
+// in the consumer's IDE without any extra imports.
 //
-// The `[http.IncomingMessage] extends [object]` form (tuple wrapping) avoids
-// distributivity over unions — we want a single yes/no check, not per-member
-// distribution.
-// type NodeHttp = typeof http;
-// type NodeIncomingMessage = [NodeHttp] extends [never]
-//   ? NodeFallbackRequest
-//   : http.IncomingMessage;
-// type NodeServerResponse = [NodeHttp] extends [never]
-//   ? NodeFallbackResponse
-//   : http.ServerResponse;
+// This augmentation is only active when @types/node is present — if it is not,
+// the `declare module 'node:http'` block is a no-op (there is nothing to augment)
+// and consumers still get typed access via ArcaraRequest / ArcaraResponse below.
 
-// Module augmentations were moved to `src/types/augmentations.ts`.
-// That file is imported for side-effects from `src/index.ts` so the
-// generated `dist/index.d.ts` includes the `/// <reference types="node" />`
-// and the `declare module` blocks consumers need without changing their config.
+declare module 'node:http' {
+  interface IncomingMessage {
+    /**
+     * Named route params extracted from the matched path pattern.
+     * Populated before any handler is called.
+     * @example req.params.id  // route: '/users/:id'
+     */
+    params: Record<string, string>;
+
+    /**
+     * Parsed query string as a flat key-value map.
+     * @example req.query.page  // url: '/search?page=2'
+     */
+    query: Record<string, string>;
+
+    /**
+     * Parsed request body. Populated automatically for POST, PUT, PATCH.
+     *
+     * Type depends on Content-Type:
+     * - `application/json`                  → parsed object
+     * - `application/x-www-form-urlencoded` → Record<string, string>
+     * - `text/*`                            → string
+     * - anything else                       → Buffer
+     *
+     * `undefined` for GET, DELETE, HEAD, OPTIONS.
+     */
+    body: unknown;
+  }
+
+  interface ServerResponse {
+    /**
+     * Sets the HTTP status code. Returns `this` for chaining.
+     * @throws {HttpError} if `code` is outside 100–599
+     * @example res.status(201).json({ created: true })
+     */
+    status(code: number): this;
+
+    /**
+     * Serializes `data` to JSON, sets Content-Type: application/json,
+     * and ends the response.
+     * @example res.json({ id: req.params.id })
+     */
+    json(data: unknown): this;
+
+    /**
+     * Sends a response body with automatic Content-Type detection.
+     * Handles string, Buffer, Uint8Array, ArrayBuffer, and plain objects.
+     * Sets Content-Length. Respects HEAD — sends headers only, no body.
+     * @example res.send('hello')
+     */
+    send(data: unknown): this;
+  }
+}
 
 // ── ArcaraRequest / ArcaraResponse ───────────────────────────────────────────
 //

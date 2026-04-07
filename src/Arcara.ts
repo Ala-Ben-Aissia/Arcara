@@ -1,12 +1,11 @@
-import type { IncomingMessage, Server, ServerResponse } from 'node:http';
-import { createServer } from 'node:http';
+import {
+  createServer,
+  ServerResponse,
+  type IncomingMessage,
+  type Server,
+} from 'node:http';
 import { Layer } from './Layer.js';
-import type {
-  ArcaraOptions,
-  ArcaraRequest,
-  ArcaraResponse,
-  HttpMethod,
-} from './types.js';
+import type { ArcaraOptions, HttpMethod } from './types.js';
 import { HttpError } from './types.js';
 import { detectContentType } from './utils/content.js';
 import { logger } from './utils/logger.js';
@@ -21,6 +20,66 @@ import { validateJson, validateStatus } from './utils/validation.js';
 // errorHandler path since status() throws on invalid codes — the last-resort
 // catch in handleRequest bypasses all proto methods and writes raw statusCode.
 
+const proto = ServerResponse.prototype;
+
+/**
+ * Serializes `data` to JSON, sets `Content-Type: application/json`, writes
+ * the body via `safeWrite`, and ends the response.
+ *
+ * Does NOT call `proto.status` on the error path to avoid a throw cascade
+ * if the error handler itself calls `res.json()` with a bad status code.
+ */
+proto.json = function (data: unknown) {
+  if (this.writableEnded) return this;
+  this.setHeader('content-type', 'application/json; charset=utf-8');
+
+  if (data === undefined) return this.end();
+
+  const { data: serialized, error } = validateJson(data);
+  if (error) {
+    logger.error(error);
+    safeWrite(this.req, this, stringifyError(error));
+    return this.end();
+  }
+
+  safeWrite(this.req, this, serialized);
+  return this.end();
+};
+
+/**
+ * Sends a response body with automatic `Content-Type` detection.
+ * Handles: string, Buffer, Uint8Array, ArrayBuffer, and plain objects.
+ *
+ * - Always sets `Content-Length` (even for HEAD) so headers are accurate.
+ * - Respects HEAD — sends headers only, writes no body.
+ * - Only sets `Content-Type` if not already set, allowing caller override.
+ */
+proto.send = function (data: unknown) {
+  if (data === undefined || this.writableEnded) return this;
+
+  if (!this.getHeader('content-type')) {
+    this.setHeader('content-type', detectContentType(data, this.req));
+  }
+
+  // Normalize to a writable chunk unconditionally — Content-Length must
+  // be accurate even for HEAD requests where the body is not sent.
+  const body =
+    data instanceof ArrayBuffer
+      ? Buffer.from(data)
+      : data instanceof Uint8Array
+        ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+        : typeof data === 'string' || Buffer.isBuffer(data)
+          ? data
+          : JSON.stringify(data);
+
+  this.setHeader('content-length', Buffer.byteLength(body));
+
+  if (this.req.method === 'HEAD') return this.end();
+
+  safeWrite(this.req, this, body);
+  return this.end();
+};
+
 /**
  * Serializes an error to a plain JSON string for error response bodies.
  * Must never throw — used when validateJson itself fails inside proto.json.
@@ -34,7 +93,7 @@ function stringifyError(error: Error): string {
 }
 
 // Note: we attach `status/json/send` directly to each `res` instance in
-// `handleRequest` because importing `ServerResponse` as a runtime value can
+// `handleRequest` because importing `ServerResponse`  runtime value can
 // be problematic under `verbatimModuleSyntax` / Node ESM type-only exports.
 
 // ── Application ─────────────────────────────────────────────────────────────
@@ -125,19 +184,19 @@ export class Arcara extends Layer {
 
         try {
           if (contentType.includes('application/json')) {
-            (req as ArcaraRequest).body = JSON.parse(raw.toString('utf-8'));
+            req.body = JSON.parse(raw.toString('utf-8'));
           } else if (
             contentType.includes('application/x-www-form-urlencoded')
           ) {
-            // URLSearchParams handles '+' as space, encoded '=' in values,
+            // URLSearchParams handles '+' , encoded '=' in values,
             // and all other edge cases that manual splitting misses.
-            (req as ArcaraRequest).body = Object.fromEntries(
+            req.body = Object.fromEntries(
               new URLSearchParams(raw.toString('utf-8')),
             );
           } else if (contentType.startsWith('text/')) {
-            (req as ArcaraRequest).body = raw.toString('utf-8');
+            req.body = raw.toString('utf-8');
           } else {
-            (req as ArcaraRequest).body = raw;
+            req.body = raw;
           }
         } catch {
           return reject(new HttpError(400, 'Invalid Request Body'));
@@ -202,21 +261,21 @@ export class Arcara extends Layer {
     const { method, pathname, query } = this.extractRequestInfo(req);
 
     // Initialize augmented fields — never undefined downstream
-    (req as ArcaraRequest).params = {};
-    (req as ArcaraRequest).query = query;
+    req.params = {};
+    req.query = query;
 
     // Attach Arcara helper methods to this response instance if absent.
     // Doing this per-instance avoids runtime import/value issues with
     // `ServerResponse` under strict module/type settings.
-    if (!(res as any).status) {
-      (res as any).status = function (code: number) {
+    if (!res.status) {
+      res.status = function (code: number) {
         const { error } = validateStatus(code);
         if (error) throw error;
         this.statusCode = code;
         return this;
       };
 
-      (res as any).json = function (data: unknown) {
+      res.json = function (data: unknown) {
         if (this.writableEnded) return this;
         this.setHeader('content-type', 'application/json; charset=utf-8');
 
@@ -233,7 +292,7 @@ export class Arcara extends Layer {
         return this.end();
       };
 
-      (res as any).send = function (data: unknown) {
+      res.send = function (data: unknown) {
         if (data === undefined || this.writableEnded) return this;
 
         if (!this.getHeader('content-type')) {
@@ -284,8 +343,8 @@ export class Arcara extends Layer {
       if (method === 'OPTIONS') {
         // await this.dispatch(
         //   pathname,
-        //   req as ArcaraRequest,
-        //   res as ArcaraResponse,
+        //   req ,
+        //   res ,
         // );
         if (!res.writableEnded) {
           const allowed = this.collectAllowedMethods(pathname);
@@ -302,11 +361,7 @@ export class Arcara extends Layer {
         await this.parseBody(req);
       }
 
-      await this.dispatch(
-        pathname,
-        req as ArcaraRequest,
-        res as ArcaraResponse,
-      );
+      await this.dispatch(pathname, req, res);
     } catch (e) {
       // ClientDisconnectedError: socket is gone, nothing to respond to.
       if (e instanceof ClientDisconnectedError) return;

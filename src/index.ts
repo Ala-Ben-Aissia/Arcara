@@ -30,6 +30,7 @@
 
 export { Arcara } from './Arcara.js';
 export { Router } from './Router.js';
+export { serveStatic } from './utils/static.js';
 
 // ── Types (public API surface) + Errors ────────────────────────────────────────────────
 

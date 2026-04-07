@@ -1,5 +1,9 @@
 # Arcara
 
+[![npm version](https://img.shields.io/npm/v/arcara)](https://npmjs.com/package/arcara)
+[![npm downloads](https://img.shields.io/npm/dm/arcara)](https://npmjs.com/package/arcara)
+[![license](https://img.shields.io/npm/l/arcara)](./LICENSE)
+
 A TypeScript-first, zero-dependency Node.js HTTP framework — tiny, fast, and fully typed for everyday APIs.
 
 ## Install
@@ -191,3 +195,9 @@ If you are contributing, please run tests and typechecks before opening a PR.
 Contributions are very welcome. Open an issue to discuss design changes,
 or submit a PR. Please keep changes focused, include tests for new behavior,
 and follow the existing coding style (TypeScript, minimal runtime deps).
+
+---
+
+## License
+
+[MIT](./LICENSE) © 2026 Ala Ben Aissia

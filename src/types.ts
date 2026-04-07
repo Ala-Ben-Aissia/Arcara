@@ -1,4 +1,4 @@
-import type { IncomingMessage, ServerResponse } from 'http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 export type HttpMethod =
   | 'GET'
@@ -119,122 +119,10 @@ export type ExtractParams<Path extends string> =
 //   ? NodeFallbackResponse
 //   : http.ServerResponse;
 
-// ── Global module augmentation ───────────────────────────────────────────────
-//
-// Declares Arcara's additions on Node's built-in types so they are visible
-// in the consumer's IDE without any extra imports.
-//
-// This augmentation is only active when @types/node is present — if it is not,
-// the `declare module 'node:http'` block is a no-op (there is nothing to augment)
-// and consumers still get typed access via ArcaraRequest / ArcaraResponse below.
-
-declare module 'node:http' {
-  interface IncomingMessage {
-    /**
-     * Named route params extracted from the matched path pattern.
-     * Populated before any handler is called.
-     * @example req.params.id  // route: '/users/:id'
-     */
-    params: Record<string, string>;
-
-    /**
-     * Parsed query string as a flat key-value map.
-     * @example req.query.page  // url: '/search?page=2'
-     */
-    query: Record<string, string>;
-
-    /**
-     * Parsed request body. Populated automatically for POST, PUT, PATCH.
-     *
-     * Type depends on Content-Type:
-     * - `application/json`                  → parsed object
-     * - `application/x-www-form-urlencoded` → Record<string, string>
-     * - `text/*`                            → string
-     * - anything else                       → Buffer
-     *
-     * `undefined` for GET, DELETE, HEAD, OPTIONS.
-     */
-    body: unknown;
-  }
-
-  interface ServerResponse {
-    /**
-     * Sets the HTTP status code. Returns `this` for chaining.
-     * @throws {HttpError} if `code` is outside 100–599
-     * @example res.status(201).json({ created: true })
-     */
-    status(code: number): this;
-
-    /**
-     * Serializes `data` to JSON, sets Content-Type: application/json,
-     * and ends the response.
-     * @example res.json({ id: req.params.id })
-     */
-    json(data: unknown): this;
-
-    /**
-     * Sends a response body with automatic Content-Type detection.
-     * Handles string, Buffer, Uint8Array, ArrayBuffer, and plain objects.
-     * Sets Content-Length. Respects HEAD — sends headers only, no body.
-     * @example res.send('hello')
-     */
-    send(data: unknown): this;
-  }
-}
-
-declare module 'http' {
-  interface IncomingMessage {
-    /**
-     * Named route params extracted from the matched path pattern.
-     * Populated before any handler is called.
-     * @example req.params.id  // route: '/users/:id'
-     */
-    params: Record<string, string>;
-
-    /**
-     * Parsed query string as a flat key-value map.
-     * @example req.query.page  // url: '/search?page=2'
-     */
-    query: Record<string, string>;
-
-    /**
-     * Parsed request body. Populated automatically for POST, PUT, PATCH.
-     *
-     * Type depends on Content-Type:
-     * - `application/json`                  → parsed object
-     * - `application/x-www-form-urlencoded` → Record<string, string>
-     * - `text/*`                            → string
-     * - anything else                       → Buffer
-     *
-     * `undefined` for GET, DELETE, HEAD, OPTIONS.
-     */
-    body: unknown;
-  }
-
-  interface ServerResponse {
-    /**
-     * Sets the HTTP status code. Returns `this` for chaining.
-     * @throws {HttpError} if `code` is outside 100–599
-     * @example res.status(201).json({ created: true })
-     */
-    status(code: number): this;
-
-    /**
-     * Serializes `data` to JSON, sets Content-Type: application/json,
-     * and ends the response.
-     * @example res.json({ id: req.params.id })
-     */
-    json(data: unknown): this;
-
-    /**
-     * Sends a response body with automatic Content-Type detection.
-     * Handles string, Buffer, Uint8Array, ArrayBuffer, and plain objects.
-     * Sets Content-Length. Respects HEAD — sends headers only, no body.
-     * @example res.send('hello')
-     */
-    send(data: unknown): this;
-  }
-}
+// Module augmentations were moved to `src/types/augmentations.ts`.
+// That file is imported for side-effects from `src/index.ts` so the
+// generated `dist/index.d.ts` includes the `/// <reference types="node" />`
+// and the `declare module` blocks consumers need without changing their config.
 
 // ── ArcaraRequest / ArcaraResponse ───────────────────────────────────────────
 //

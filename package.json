@@ -1,6 +1,6 @@
 {
   "name": "arcara",
-  "version": "0.1.0",
+  "version": "0.1.8",
   "description": "A TypeScript-native, zero-dependency Node.js HTTP framework",
   "author": "Aloulou <alabenaissia@users.noreply.github.com>",
   "license": "MIT",
@@ -57,7 +57,7 @@
   ],
   "scripts": {
     "build:js": "tsup --config tsup.config.ts",
-    "build:dts": "tsc -p tsconfig.build.json --emitDeclarationOnly --outDir dist",
+    "build:dts": "tsc -p tsconfig.build.json --emitDeclarationOnly --outDir dist && node scripts/postprocess-dts.cjs",
     "build:dcts": "node -e \"const fs=require('fs');const s=fs.readFileSync('dist/index.d.ts','utf8');fs.writeFileSync('dist/index.d.cts',s);\"",
     "build": "pnpm build:js && pnpm build:dts && pnpm build:dcts",
     "dev": "tsup --config tsup.config.ts --watch",

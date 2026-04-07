@@ -10,8 +10,6 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
 
-    "types": ["node"],
-
     // IMPORTANT: Do NOT set removeComments: true.
     // When declaration: true is active, TypeScript strips comments from .js
     // output but PRESERVES them in .d.ts files — that's the correct behavior.

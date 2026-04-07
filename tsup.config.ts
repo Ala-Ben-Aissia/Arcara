@@ -17,7 +17,14 @@ export default defineConfig({
   // Why not just dts: true?
   // tsup's bundler-based dts emit re-exports types but can silently drop
   // ambient `declare module` blocks. We need those for consumer autocompletion.
-  dts: true,
+  // Use tsup's dts resolver to preserve module augmentations in the
+  // bundled declaration output. We still run `tsc` separately in the
+  // build pipeline to generate authoritative .d.ts files, but enabling
+  // `resolve` here avoids augmentation loss when tsup is used interactively.
+  // Defer declaration generation to `tsc` (build:dts). Avoid tsup's dts
+  // bundler to prevent it from emitting a partial/bundled index.d.ts
+  // that may omit triple-slash references or augmentation blocks.
+  dts: false,
 
   minify: true,
   minifyIdentifiers: true,

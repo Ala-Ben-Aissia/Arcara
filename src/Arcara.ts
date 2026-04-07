@@ -1,9 +1,5 @@
-import {
-  type IncomingMessage,
-  type Server,
-  ServerResponse,
-  createServer,
-} from 'http';
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
+import { createServer } from 'node:http';
 import { Layer } from './Layer.js';
 import type {
   ArcaraOptions,
@@ -25,8 +21,6 @@ import { validateJson, validateStatus } from './utils/validation.js';
 // errorHandler path since status() throws on invalid codes — the last-resort
 // catch in handleRequest bypasses all proto methods and writes raw statusCode.
 
-const proto = ServerResponse.prototype;
-
 /**
  * Serializes an error to a plain JSON string for error response bodies.
  * Must never throw — used when validateJson itself fails inside proto.json.
@@ -39,77 +33,9 @@ function stringifyError(error: Error): string {
   }
 }
 
-/**
- * Sets the HTTP status code on the response. Throws on invalid code ranges —
- * this is a programmer error and should surface immediately at the call site.
- * Returns `this` for chaining: `res.status(201).json({ ... })`
- *
- * @throws {HttpError} 500 if `code` is outside 100–599
- */
-proto.status = function (code: number) {
-  const { error } = validateStatus(code);
-  if (error) throw error;
-  this.statusCode = code;
-  return this;
-};
-
-/**
- * Serializes `data` to JSON, sets `Content-Type: application/json`, writes
- * the body via `safeWrite`, and ends the response.
- *
- * Does NOT call `proto.status` on the error path to avoid a throw cascade
- * if the error handler itself calls `res.json()` with a bad status code.
- */
-proto.json = function (data: unknown) {
-  if (this.writableEnded) return this;
-  this.setHeader('content-type', 'application/json; charset=utf-8');
-
-  if (data === undefined) return this.end();
-
-  const { data: serialized, error } = validateJson(data);
-  if (error) {
-    logger.error(error);
-    safeWrite(this.req, this, stringifyError(error));
-    return this.end();
-  }
-
-  safeWrite(this.req, this, serialized);
-  return this.end();
-};
-
-/**
- * Sends a response body with automatic `Content-Type` detection.
- * Handles: string, Buffer, Uint8Array, ArrayBuffer, and plain objects.
- *
- * - Always sets `Content-Length` (even for HEAD) so headers are accurate.
- * - Respects HEAD — sends headers only, writes no body.
- * - Only sets `Content-Type` if not already set, allowing caller override.
- */
-proto.send = function (data: unknown) {
-  if (data === undefined || this.writableEnded) return this;
-
-  if (!this.getHeader('content-type')) {
-    this.setHeader('content-type', detectContentType(data, this.req));
-  }
-
-  // Normalize to a writable chunk unconditionally — Content-Length must
-  // be accurate even for HEAD requests where the body is not sent.
-  const body =
-    data instanceof ArrayBuffer
-      ? Buffer.from(data)
-      : data instanceof Uint8Array
-        ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
-        : typeof data === 'string' || Buffer.isBuffer(data)
-          ? data
-          : JSON.stringify(data);
-
-  this.setHeader('content-length', Buffer.byteLength(body));
-
-  if (this.req.method === 'HEAD') return this.end();
-
-  safeWrite(this.req, this, body);
-  return this.end();
-};
+// Note: we attach `status/json/send` directly to each `res` instance in
+// `handleRequest` because importing `ServerResponse` as a runtime value can
+// be problematic under `verbatimModuleSyntax` / Node ESM type-only exports.
 
 // ── Application ─────────────────────────────────────────────────────────────
 
@@ -278,6 +204,59 @@ export class Arcara extends Layer {
     // Initialize augmented fields — never undefined downstream
     (req as ArcaraRequest).params = {};
     (req as ArcaraRequest).query = query;
+
+    // Attach Arcara helper methods to this response instance if absent.
+    // Doing this per-instance avoids runtime import/value issues with
+    // `ServerResponse` under strict module/type settings.
+    if (!(res as any).status) {
+      (res as any).status = function (code: number) {
+        const { error } = validateStatus(code);
+        if (error) throw error;
+        this.statusCode = code;
+        return this;
+      };
+
+      (res as any).json = function (data: unknown) {
+        if (this.writableEnded) return this;
+        this.setHeader('content-type', 'application/json; charset=utf-8');
+
+        if (data === undefined) return this.end();
+
+        const { data: serialized, error } = validateJson(data);
+        if (error) {
+          logger.error(error);
+          safeWrite(this.req, this, stringifyError(error));
+          return this.end();
+        }
+
+        safeWrite(this.req, this, serialized);
+        return this.end();
+      };
+
+      (res as any).send = function (data: unknown) {
+        if (data === undefined || this.writableEnded) return this;
+
+        if (!this.getHeader('content-type')) {
+          this.setHeader('content-type', detectContentType(data, this.req));
+        }
+
+        const body =
+          data instanceof ArrayBuffer
+            ? Buffer.from(data)
+            : data instanceof Uint8Array
+              ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+              : typeof data === 'string' || Buffer.isBuffer(data)
+                ? data
+                : JSON.stringify(data);
+
+        this.setHeader('content-length', Buffer.byteLength(body));
+
+        if (this.req.method === 'HEAD') return this.end();
+
+        safeWrite(this.req, this, body);
+        return this.end();
+      };
+    }
 
     const timeout = setTimeout(() => {
       if (!res.writableEnded) {

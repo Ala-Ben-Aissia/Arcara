@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * Arcara — A TypeScript-native, zero-dependency Node.js HTTP framework.
  *
@@ -27,4 +28,4 @@
  */
 export { Arcara } from './Arcara.js';
 export { Router } from './Router.js';
-export { type HttpMethod, type ArcaraRequest, type ArcaraResponse, type NextFn, type Middleware, type RouteHandler, type ErrorHandler, type ArcaraOptions, HttpError, } from './types.js';
+export { HttpError, type ArcaraOptions, type ArcaraRequest, type ArcaraResponse, type ErrorHandler, type HttpMethod, type Middleware, type NextFn, type RouteHandler, } from './types.js';

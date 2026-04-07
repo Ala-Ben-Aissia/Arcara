@@ -34,23 +34,20 @@ export { Router } from './Router.js';
 // ── Types (public API surface) + Errors ────────────────────────────────────────────────
 
 export {
-  // HTTP
-  type HttpMethod,
-
+  // Error
+  HttpError,
+  // Configuration
+  type ArcaraOptions,
   // Request / Response context
   type ArcaraRequest,
   type ArcaraResponse,
-
+  type ErrorHandler,
+  // HTTP
+  type HttpMethod,
+  type Middleware,
   // Middleware
   type NextFn,
-  type Middleware,
   type RouteHandler,
-  type ErrorHandler,
-
-  // Configuration
-  type ArcaraOptions,
-  // Error
-  HttpError,
 } from './types.js';
 
 // ── Not exported (intentionally internal) ─────────────────────────────────────

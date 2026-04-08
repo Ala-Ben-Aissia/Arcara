@@ -87,7 +87,7 @@ See the changelog for full details.
   Handlers signature:
 
   ```ts
-  (req, res, next) => void | Promise<void>
+  (req, res, next) => void | ArcaraResponse |  Promise<void | ArcaraResponse>
   ```
 
 - Response helpers
@@ -139,10 +139,10 @@ const requireAuth = (req, res, next) => {
 ## Notes (usage-relevant)
 
 - Path params are inferred from literal route strings: `req.params.id` is typed when you define `'/users/:id'`.
-- `req.body` is populated for POST/PUT/PATCH handlers; for other methods it is `undefined`.
+- `req.body` is populated for POST/PUT/PATCH handlers (as any for flexibility); for other methods it is `undefined`.
 - `HEAD` requests fall back to the `GET` handler automatically.
 - `res.send()` detects string/Buffer/Uint8Array/ArrayBuffer/object and sets an appropriate `Content-Type` and `Content-Length`.
-- Throw `HttpError(status, message)` or call `next(err)` to reach the registered error handler.
+- Throw `HttpError(status, message)` or call `next(err)` or res.status(code).json({error: '...'}) to reach the registered error handler.
 
 ---
 

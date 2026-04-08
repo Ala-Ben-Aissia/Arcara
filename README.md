@@ -1,5 +1,6 @@
 # Arcara
 
+[![Website](https://img.shields.io/badge/website-live-blue)](https://arcara.netlify.app)
 [![npm version](https://img.shields.io/npm/v/arcara)](https://npmjs.com/package/arcara)
 [![npm downloads](https://img.shields.io/npm/dm/arcara)](https://npmjs.com/package/arcara)
 [![license](https://img.shields.io/npm/l/arcara)](./LICENSE)

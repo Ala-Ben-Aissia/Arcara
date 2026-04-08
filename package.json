@@ -1,6 +1,6 @@
 {
   "name": "arcara",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "A TypeScript-native, zero-runtime-dependency Node.js HTTP framework",
   "author": "Aloulou <alabenaissia@users.noreply.github.com>",
   "license": "MIT",
@@ -25,7 +25,7 @@
   "bugs": {
     "url": "https://github.com/Ala-Ben-Aissia/arcara/issues"
   },
-  "homepage": "https://github.com/Ala-Ben-Aissia/arcara#readme",
+  "homepage": "https://arcara.netlify.app",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

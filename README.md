@@ -264,9 +264,6 @@ app.use(serveStatic('./public'));
 app.use('/static', serveStatic('./assets'));
 // mount via router → prefix stripped before serveStatic sees req.url
 
-app.use(serveStatic('./assets', { prefix: '/static' }));
-// mount via serveStatic directly → useful when used outside app.use context
-
 app.use(serveStatic('public', { index: 'app.html' }));
 // use app.html instead of index.html when accessing a directory (e.g. / → app.html)
 ```

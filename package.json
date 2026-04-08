@@ -1,6 +1,6 @@
 {
   "name": "arcara",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "A TypeScript-native, zero-runtime-dependency Node.js HTTP framework",
   "author": "Aloulou <alabenaissia@users.noreply.github.com>",
   "license": "MIT",

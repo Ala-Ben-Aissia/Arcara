@@ -7,6 +7,10 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-04-07
+
+- `serveStatic` no longer accepts a `prefix` option — use `app.use('/prefix', serveStatic('./dir'))` instead. The router now handles prefix stripping consistently with all other middleware.
+
 ## [0.1.8] - 2026-04-07
 
 ### Added

@@ -401,7 +401,7 @@ export class Arcara extends Layer {
     hostOrCallback?: string | (() => void),
     maybeCallback?: () => void,
   ): this {
-    let host = '0.0.0.0';
+    let host = 'localhost';
     let callback: (() => void) | undefined;
 
     if (typeof hostOrCallback === 'string') {

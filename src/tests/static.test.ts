@@ -100,33 +100,3 @@ describe('serveStatic middleware', () => {
     assert.equal(res.status, 404);
   });
 });
-
-describe('serveStatic prefix mounting', () => {
-  let server: TestServer;
-  let root: string;
-
-  before(async () => {
-    root = await fs.mkdtemp(path.join(os.tmpdir(), 'arcara-static-'));
-    await fs.writeFile(path.join(root, 'hello.txt'), 'prefixed', 'utf8');
-
-    server = await createTestServer((app) => {
-      app.use(serveStatic(root, { prefix: '/static' }));
-    });
-  });
-
-  after(async () => {
-    await server.close();
-    await fs.rm(root, { recursive: true, force: true });
-  });
-
-  it('serves files under the configured prefix', async () => {
-    const res = await request(server.port, 'GET', '/static/hello.txt');
-    assert.equal(res.status, 200);
-    assert.equal(res.body, 'prefixed');
-  });
-
-  it('does not serve when prefix does not match', async () => {
-    const res = await request(server.port, 'GET', '/hello.txt');
-    assert.equal(res.status, 404);
-  });
-});

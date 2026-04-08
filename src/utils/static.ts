@@ -6,7 +6,7 @@ import type { Middleware } from '../types.js';
 import { detectContentType } from './content.js';
 
 export interface ServeStaticOptions {
-  prefix?: string;
+  // prefix?: string;
   index?: string;
 }
 
@@ -57,11 +57,11 @@ export function serveStatic(
     const rawPath = decodeURIComponent(req.url?.split('?')[0] ?? '/');
     let pathname = rawPath;
 
-    if (opts.prefix) {
-      if (!pathname.startsWith(opts.prefix)) return next();
-      pathname = pathname.slice(opts.prefix.length);
-      if (!pathname.startsWith('/')) pathname = '/' + pathname;
-    }
+    // if (opts.prefix) {
+    //   if (!pathname.startsWith(opts.prefix)) return next();
+    //   pathname = pathname.slice(opts.prefix.length);
+    //   if (!pathname.startsWith('/')) pathname = '/' + pathname;
+    // }
 
     const safePath = normalize(pathname).replace(/^(\.\.(\/|\\|$))+/, '');
     let absPath = join(absRoot, safePath);

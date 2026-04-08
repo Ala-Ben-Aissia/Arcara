@@ -4,9 +4,31 @@
 [![npm downloads](https://img.shields.io/npm/dm/arcara)](https://npmjs.com/package/arcara)
 [![license](https://img.shields.io/npm/l/arcara)](./LICENSE)
 
-A TypeScript-first, zero-runtime-dependency Node.js HTTP framework — radix-tree routing, full type inference on path params, and a minimal but complete middleware model.
+A TypeScript-first, zero-runtime-dependency Node.js HTTP framework.
 
-No code generation. No config files. Just import and go.
+Radix-tree routing. Full type inference. Minimal, composable middleware.
+
+**No setup. No config. Just import and go.**
+
+---
+
+## Why Arcara?
+
+- ⚡ Radix-tree routing (fast path matching)
+- 🧠 Full type inference for route params (no generics, no casting)
+- 🪶 Zero runtime dependencies
+- 🔌 Minimal, fully composable middleware model
+- 📦 No config, no code generation
+
+If you like Express but want stronger typing and less overhead, Arcara is a natural upgrade.
+
+---
+
+## Requirements
+
+- Node.js 18+
+
+---
 
 ## Install
 
@@ -14,7 +36,9 @@ No code generation. No config files. Just import and go.
 npm install arcara
 ```
 
-Node types ship with the package. No additional setup — no `@types/node` install, no `tsconfig` changes required.
+Node types are included — no `@types/node`, no `tsconfig` changes required.
+
+---
 
 ## Quick Start
 
@@ -29,19 +53,24 @@ app.use((req, _res, next) => {
 });
 
 app.get('/users/:id', (req, res) => {
-  res.json({ id: req.params.id }); // req.params.id is string, not any
+  res.json({ id: req.params.id });
+  // req.params.id is inferred as string — no casting needed
 });
 
 app.post('/users', (req, res) => {
   res.status(201).json(req.body);
+  // req.body is parsed JSON for POST/PUT/PATCH (application/json)
 });
 
 app.onError((err, _req, res) => {
   res.status(err.status).json({ error: err.message });
+  // err is always normalized to HttpError internally
 });
 
 app.listen(3000, () => console.log('Listening on :3000'));
 ```
+
+---
 
 ## API
 
@@ -49,12 +78,17 @@ app.listen(3000, () => console.log('Listening on :3000'));
 
 ```ts
 import { Arcara } from 'arcara';
+
 const app = new Arcara();
 
-app.listen(3000); // start server
-app.listen(3000, '0.0.0.0', cb); // with host + callback
-await app.close(); // graceful shutdown
+app.listen(3000);
+// start server on port 3000
+
+app.listen(3000, '0.0.0.0', () => {});
+// with host + optional callback
 ```
+
+---
 
 ### Routing
 
@@ -66,15 +100,18 @@ app.patch(path, ...handlers);
 app.delete(path, ...handlers);
 ```
 
-Path params are statically inferred from the route string — no casting, no `any`:
+Path params are inferred from the route string:
 
 ```ts
 app.get('/orgs/:orgId/repos/:repoId', (req, res) => {
-  const { orgId, repoId } = req.params; // both typed as string
+  const { orgId, repoId } = req.params;
+  // both are typed as string
 });
 ```
 
-Handler signature:
+---
+
+### Handlers
 
 ```ts
 type Handler = (
@@ -84,26 +121,38 @@ type Handler = (
 ) => void | ArcaraResponse | Promise<void | ArcaraResponse>;
 ```
 
-Returning `res.json()` or `res.send()` works in both sync and async handlers:
-
 ```ts
-app.get('/ping', (req, res) => res.json({ ok: true }));
+app.get('/ping', (req, res) => {
+  return res.json({ ok: true });
+  // returning is optional but supported
+});
 
 app.get('/data', async (req, res) => {
   const data = await fetchSomething();
   return res.json(data);
+  // works the same in async handlers
 });
 ```
+
+---
 
 ### Middleware
 
 ```ts
-app.use(handler); // global — runs on every request
-app.use('/prefix', handler); // prefix-scoped — runs when URL starts with /prefix
-app.use('/prefix', router); // mount a sub-router
+app.use(handler);
+// runs on every request
+
+app.use('/prefix', handler);
+// runs only when URL starts with /prefix
+
+app.use('/prefix', router);
+// mount a sub-router under /prefix
 ```
 
-The prefix is stripped from `req.url` before your handler sees it. A middleware mounted at `/static` receives `/logo.png`, not `/static/logo.png`.
+**The prefix is stripped from `req.url` before your handler sees it.**
+// a middleware mounted at `/static` receives `/logo.png`, not `/static/logo.png`
+
+---
 
 ### Sub-Routers
 
@@ -112,27 +161,45 @@ import { Router } from 'arcara';
 
 const users = new Router();
 
-users.get('/:id', (req, res) => res.json({ id: req.params.id }));
-users.post('/', (req, res) => res.status(201).json(req.body));
-users.delete('/:id', (req, res) => res.status(204).end());
+users.get('/:id', (req, res) => {
+  res.json({ id: req.params.id });
+});
+
+users.post('/', (req, res) => {
+  res.status(201).json(req.body);
+});
+
+users.delete('/:id', (req, res) => {
+  res.status(204).end();
+});
 
 app.use('/users', users);
+// /users/:id → handled inside the router as /:id
 ```
 
-Routers compose infinitely — a router can mount other routers.
+Routers can be nested infinitely.
+
+---
 
 ### Response Helpers
 
 ```ts
-res.status(201).json({ created: true }); // sets Content-Type, ends response
-res.send('plain text'); // auto Content-Type + Content-Length
-res.send(buffer); // Buffer / Uint8Array / ArrayBuffer
-res.send({ key: 'value' }); // object → JSON
+res.status(201).json({ created: true });
+// sets status + JSON + ends response
+
+res.send('plain text');
+// auto Content-Type + Content-Length
+
+res.send(buffer);
+// Buffer / Uint8Array / ArrayBuffer supported
+
+res.send({ key: 'value' });
+// object → JSON automatically
 ```
 
-### Error Handling
+---
 
-Arcara normalizes every thrown value or `next(err)` call into an `HttpError` before reaching your error handler:
+### Error Handling
 
 ```ts
 app.onError((err, req, res) => {
@@ -140,26 +207,25 @@ app.onError((err, req, res) => {
 });
 ```
 
-Ways to trigger the error handler from inside a handler:
+Ways to trigger the error handler:
 
 ```ts
-// 1. Throw an HttpError — full control over status + message
 throw new HttpError(400, 'Bad request');
+// explicit error with status + message
 
-// 2. Pass any error to next()
 next(new HttpError(400, 'Bad request'));
+// pass error to the pipeline
 
-// 3. Respond directly and bypass the error handler entirely
 return res.status(400).json({ error: 'Bad request' });
+// bypass error handler entirely
 ```
-
-`HttpError` always carries `status: number` and `message: string`. Pass a third argument for additional details:
 
 ```ts
 throw new HttpError(422, 'Validation failed', {
   field: 'email',
   reason: 'invalid format',
 });
+// optional third argument for extra details
 ```
 
 Scoped error handling per router:
@@ -174,54 +240,79 @@ api.onError((err, _req, res) => {
 app.use('/api', api);
 ```
 
+---
+
+### Request Behavior
+
+| Feature      | Behavior                                               |
+| ------------ | ------------------------------------------------------ |
+| `req.body`   | Parsed for JSON (`application/json`) on POST/PUT/PATCH |
+| `req.params` | Fully typed from route string                          |
+| `HEAD`       | Automatically handled via GET                          |
+| 405          | Returned when path exists but method does not          |
+
+---
+
 ### Static Files
 
 ```ts
 import { serveStatic } from 'arcara';
 
-app.use(serveStatic('./public')); // serve at /
-app.use('/static', serveStatic('./assets')); // serve at /static
-app.use(serveStatic('./assets', { prefix: '/static' })); // same as 👆
-app.use(serveStatic('public', { index: 'app.html' })); // use app.html as the default file instead of index.html when accessing the root
+app.use(serveStatic('./public'));
+// serves at root → /logo.png maps to ./public/logo.png
+
+app.use('/static', serveStatic('./assets'));
+// mount via router → prefix stripped before serveStatic sees req.url
+
+app.use(serveStatic('./assets', { prefix: '/static' }));
+// mount via serveStatic directly → useful when used outside app.use context
+
+app.use(serveStatic('public', { index: 'app.html' }));
+// use app.html instead of index.html when accessing a directory (e.g. / → app.html)
 ```
 
-The middleware handles safe path resolution, directory index fallback (`/about/` → `about/index.html`), extension-based MIME types with magic-byte sniffing for unknown extensions, `ETag` / `Last-Modified` headers with `304 Not Modified` support, `HEAD` requests, and streaming via `pipeline`.
+**Features:**
 
-### Behavior Reference
+- Safe path resolution (prevents directory traversal)
+- Directory index fallback (`/about/` → `about/index.html`)
+- MIME type detection (with fallback for unknown extensions)
+- `ETag` / `Last-Modified` headers (`304 Not Modified` support)
+- `HEAD` request handling
+- Streaming via `pipeline` (efficient file serving)
 
-| Behavior            | Detail                                                                        |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `HEAD` requests     | Automatically handled by the `GET` handler — no duplication needed            |
-| `req.body`          | Populated for `POST`, `PUT`, `PATCH` — `undefined` for other methods          |
-| `req.params`        | Typed from the route string literal at compile time                           |
-| Method mismatch     | Returns `405 Method Not Allowed` when the path exists but the method doesn't  |
-| Error normalization | Any thrown value or `next(err)` call reaches `onError` as a typed `HttpError` |
+---
 
-## Examples
-
-**Auth middleware:**
+### Example
 
 ```ts
-const requireAuth: Middleware = (req, res, next) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) throw new HttpError(401, 'Unauthorized');
+const requireAuth = (req, res, next) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+
+  if (!token) {
+    throw new HttpError(401, 'Unauthorized');
+  }
+
   req.user = verifyToken(token);
   next();
 };
 
 app.use('/api', requireAuth);
+// all /api routes require authentication
+
+app.get('/api/profile', (req, res) => {
+  res.json({ user: req.user });
+});
 ```
 
-**Multiple handlers on a route:**
-
-```ts
-app.post('/admin/users', requireAuth, requireAdmin, createUser);
-```
+---
 
 ## Contributing
 
-Open an issue before submitting large changes. Keep PRs focused, include tests for new behavior, and follow the existing style: TypeScript, zero runtime dependencies.
+Open an issue before submitting large changes.
+Keep PRs focused, include tests, and follow the existing style.
+
+---
 
 ## License
 
-[MIT](./LICENSE) © 2026 Ala Ben Aissia
+MIT © 2026 Ala Ben Aissia

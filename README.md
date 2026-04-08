@@ -4,7 +4,9 @@
 [![npm downloads](https://img.shields.io/npm/dm/arcara)](https://npmjs.com/package/arcara)
 [![license](https://img.shields.io/npm/l/arcara)](./LICENSE)
 
-A TypeScript-first, zero-runtime-dependency Node.js HTTP framework — tiny, fast, and fully typed for everyday APIs.
+A TypeScript-first, zero-runtime-dependency Node.js HTTP framework — radix-tree routing, full type inference on path params, and a minimal but complete middleware model.
+
+No code generation. No config files. Just import and go.
 
 ## Install
 
@@ -12,40 +14,28 @@ A TypeScript-first, zero-runtime-dependency Node.js HTTP framework — tiny, fas
 npm install arcara
 ```
 
-If you use TypeScript in your project, install Node types to get full
-`req`/`res` inference in editors and the compiler:
-
-```bash
-pnpm add -D @types/node
-# or npm: npm i -D @types/node
-```
+Node types ship with the package. No additional setup — no `@types/node` install, no `tsconfig` changes required.
 
 ## Quick Start
-
-Copy → paste → run.
 
 ```ts
 import { Arcara, HttpError } from 'arcara';
 
 const app = new Arcara();
 
-// Simple middleware
 app.use((req, _res, next) => {
   console.log(req.method, req.url);
   next();
 });
 
-// Route with inferred path param
 app.get('/users/:id', (req, res) => {
-  res.json({ id: req.params.id });
+  res.json({ id: req.params.id }); // req.params.id is string, not any
 });
 
-// POST with parsed body
 app.post('/users', (req, res) => {
   res.status(201).json(req.body);
 });
 
-// Router-level error handler (overrides default for this sub-tree)
 app.onError((err, _req, res) => {
   res.status(err.status).json({ error: err.message });
 });
@@ -53,149 +43,184 @@ app.onError((err, _req, res) => {
 app.listen(3000, () => console.log('Listening on :3000'));
 ```
 
-**What's new (0.1.8)**
+## API
 
-- Static file serving middleware: `serveStatic(root, { prefix?, index? })` —
-  safe path resolution, index fallback, prefix mounting, HEAD support and
-  streaming via `pipeline` with content sniffing for unknown extensions.
-- Improved content-type detection (`detectContentType`) and a small in-memory
-  sniff cache to avoid repeated reads for unchanged files.
-- TypeScript typing fixes: conditional type bridge and module augmentations
-  (both `node:http` and `http`) so consumers with `@types/node` get full
-  `IncomingMessage` / `ServerResponse` members while other environments still
-  compile with a minimal safe fallback.
+### Application
 
-See the changelog for full details.
+```ts
+import { Arcara } from 'arcara';
+const app = new Arcara();
 
-## API Usage (practical)
+app.listen(3000); // start server
+app.listen(3000, '0.0.0.0', cb); // with host + callback
+await app.close(); // graceful shutdown
+```
 
-- Create app
-  - `const app = new Arcara();`
+### Routing
 
-- Middleware / mounting
-  - `app.use(handler)` — global middleware
-  - `app.use('/prefix', handler)` — prefix-scoped middleware
-  - `app.use('/prefix', router)` — mount a `Router` or `Arcara` layer
+```ts
+app.get(path, ...handlers);
+app.post(path, ...handlers);
+app.put(path, ...handlers);
+app.patch(path, ...handlers);
+app.delete(path, ...handlers);
+```
 
-- Routing helpers
-  - `app.get(path, ...handlers)`
-  - `app.post(path, ...handlers)`
-  - `app.put(path, ...handlers)`
-  - `app.patch(path, ...handlers)`
-  - `app.delete(path, ...handlers)`
+Path params are statically inferred from the route string — no casting, no `any`:
 
-  Handlers signature:
+```ts
+app.get('/orgs/:orgId/repos/:repoId', (req, res) => {
+  const { orgId, repoId } = req.params; // both typed as string
+});
+```
 
-  ```ts
-  (req, res, next) => void | ArcaraResponse |  Promise<void | ArcaraResponse>
-  ```
+Handler signature:
 
-- Response helpers
-  - `res.status(code)` — returns `this` for chaining
-  - `res.json(value)` — sets `Content-Type: application/json` and ends
-  - `res.send(value)` — auto-detects Content-Type, sets `Content-Length`, ends
+```ts
+type Handler = (
+  req,
+  res,
+  next?,
+) => void | ArcaraResponse | Promise<void | ArcaraResponse>;
+```
 
-  Example:
+Returning `res.json()` or `res.send()` works in both sync and async handlers:
 
-  ```ts
-  res.status(201).json({ created: true });
-  res.send('plain text or Buffer or object');
-  ```
+```ts
+app.get('/ping', (req, res) => res.json({ ok: true }));
 
-- Error handling
-  - Register with `app.onError((err, req, res) => { ... })`
-  - Throw `HttpError` to produce an HTTP status + JSON message:
-    ```ts
-    import { HttpError } from 'arcara';
-    throw new HttpError(404, 'Not found');
-    ```
+app.get('/data', async (req, res) => {
+  const data = await fetchSomething();
+  return res.json(data);
+});
+```
 
-- Server control
-  - `app.listen(port[, host, callback])` — start server
-  - `await app.close()` — graceful shutdown
+### Middleware
 
-## Examples (short)
+```ts
+app.use(handler); // global — runs on every request
+app.use('/prefix', handler); // prefix-scoped — runs when URL starts with /prefix
+app.use('/prefix', router); // mount a sub-router
+```
 
-- Mounting a `Router`:
+The prefix is stripped from `req.url` before your handler sees it. A middleware mounted at `/static` receives `/logo.png`, not `/static/logo.png`.
+
+### Sub-Routers
 
 ```ts
 import { Router } from 'arcara';
+
 const users = new Router();
+
 users.get('/:id', (req, res) => res.json({ id: req.params.id }));
+users.post('/', (req, res) => res.status(201).json(req.body));
+users.delete('/:id', (req, res) => res.status(204).end());
+
 app.use('/users', users);
 ```
 
-- Auth middleware:
+Routers compose infinitely — a router can mount other routers.
+
+### Response Helpers
 
 ```ts
-const requireAuth = (req, res, next) => {
-  const token = req.headers['x-api-key'];
-  if (!token || token !== 'secret')
-    return res.status(401).json({ error: 'Unauthorized' });
+res.status(201).json({ created: true }); // sets Content-Type, ends response
+res.send('plain text'); // auto Content-Type + Content-Length
+res.send(buffer); // Buffer / Uint8Array / ArrayBuffer
+res.send({ key: 'value' }); // object → JSON
+```
+
+### Error Handling
+
+Arcara normalizes every thrown value or `next(err)` call into an `HttpError` before reaching your error handler:
+
+```ts
+app.onError((err, req, res) => {
+  res.status(err.status).json({ error: err.message });
+});
+```
+
+Ways to trigger the error handler from inside a handler:
+
+```ts
+// 1. Throw an HttpError — full control over status + message
+throw new HttpError(400, 'Bad request');
+
+// 2. Pass any error to next()
+next(new HttpError(400, 'Bad request'));
+
+// 3. Respond directly and bypass the error handler entirely
+return res.status(400).json({ error: 'Bad request' });
+```
+
+`HttpError` always carries `status: number` and `message: string`. Pass a third argument for additional details:
+
+```ts
+throw new HttpError(422, 'Validation failed', {
+  field: 'email',
+  reason: 'invalid format',
+});
+```
+
+Scoped error handling per router:
+
+```ts
+const api = new Router();
+
+api.onError((err, _req, res) => {
+  res.status(err.status).json({ error: err.message, code: err.status });
+});
+
+app.use('/api', api);
+```
+
+### Static Files
+
+```ts
+import { serveStatic } from 'arcara';
+
+app.use(serveStatic('./public')); // serve at /
+app.use('/static', serveStatic('./assets')); // serve at /static
+app.use(serveStatic('./assets', { prefix: '/static' })); // same as 👆
+app.use(serveStatic('public', { index: 'app.html' })); // use app.html as the default file instead of index.html when accessing the root
+```
+
+The middleware handles safe path resolution, directory index fallback (`/about/` → `about/index.html`), extension-based MIME types with magic-byte sniffing for unknown extensions, `ETag` / `Last-Modified` headers with `304 Not Modified` support, `HEAD` requests, and streaming via `pipeline`.
+
+### Behavior Reference
+
+| Behavior            | Detail                                                                        |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `HEAD` requests     | Automatically handled by the `GET` handler — no duplication needed            |
+| `req.body`          | Populated for `POST`, `PUT`, `PATCH` — `undefined` for other methods          |
+| `req.params`        | Typed from the route string literal at compile time                           |
+| Method mismatch     | Returns `405 Method Not Allowed` when the path exists but the method doesn't  |
+| Error normalization | Any thrown value or `next(err)` call reaches `onError` as a typed `HttpError` |
+
+## Examples
+
+**Auth middleware:**
+
+```ts
+const requireAuth: Middleware = (req, res, next) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) throw new HttpError(401, 'Unauthorized');
+  req.user = verifyToken(token);
   next();
 };
+
+app.use('/api', requireAuth);
 ```
 
-## Notes (usage-relevant)
-
-- Path params are inferred from literal route strings: `req.params.id` is typed when you define `'/users/:id'`.
-- `req.body` is populated for POST/PUT/PATCH handlers (as any for flexibility); for other methods it is `undefined`.
-- `HEAD` requests fall back to the `GET` handler automatically.
-- `res.send()` detects string/Buffer/Uint8Array/ArrayBuffer/object and sets an appropriate `Content-Type` and `Content-Length`.
-- Throw `HttpError(status, message)` or call `next(err)` or res.status(code).json({error: '...'}) to reach the registered error handler.
-
----
-
-Minimal, practical, and ready for production usage — import `arcara`, write handlers, and ship.
-
-## Static files
-
-Arcara includes a small, zero-runtime-dependency static middleware useful for
-serving assets from disk in simple deployments or local demos. The middleware
-is implemented at `src/utils/static.ts` and supports:
-
-- safe path resolution and directory index resolution (`index.html` by default)
-- optional `prefix` mounting to scope files to a URL subtree
-- proper `HEAD` handling and `Content-Length` negotiation
-- extension-based MIME map and a magic-byte content sniff fallback via
-  `detectContentType`
-
-Usage (example):
+**Multiple handlers on a route:**
 
 ```ts
-import { Arcara, serveStatic } from 'arcara';
-
-const app = new Arcara();
-app.use(serveStatic('./public'));
-
-// or mount under a prefix:
-app.use(serveStatic('./public', { prefix: '/static' }));
+app.post('/admin/users', requireAuth, requireAdmin, createUser);
 ```
-
-Note: the middleware lives under `src/utils/static.ts` in this repository. When
-publishing the package this utility is included in the `dist` artifacts and
-can be re-exported from the public API in a future release.
-
-## Testing & development
-
-Run the test-suite and type checks locally:
-
-```bash
-pnpm install
-pnpm test        # runs node:test suites via tsx
-pnpm run typecheck
-pnpm run build   # builds JS + declaration files
-```
-
-If you are contributing, please run tests and typechecks before opening a PR.
 
 ## Contributing
 
-Contributions are very welcome. Open an issue to discuss design changes,
-or submit a PR. Please keep changes focused, include tests for new behavior,
-and follow the existing coding style (TypeScript, minimal runtime deps).
-
----
+Open an issue before submitting large changes. Keep PRs focused, include tests for new behavior, and follow the existing style: TypeScript, zero runtime dependencies.
 
 ## License
 

@@ -25,76 +25,6 @@ export type ExtractParams<Path extends string> =
       ? Param
       : never;
 
-// ── Node.js type bridge ──────────────────────────────────────────────────────
-//
-// Arcara depends on @types/node as a peerDependency — consumers of a Node.js
-// HTTP framework are expected to have it installed. However, if a consumer's
-// project does not have @types/node resolvable at the time TypeScript checks
-// our .d.ts, the `import type http from 'node:http'` above would fail and
-// every Arcara type would collapse to `any` or produce a hard error.
-//
-// The conditional bridge below solves this:
-//
-//   - WITH @types/node    → `NodeIncomingMessage` = `http.IncomingMessage`
-//                           `NodeServerResponse`   = `http.ServerResponse`
-//                           Full Node member inference (headers, socket, etc.)
-//
-//   - WITHOUT @types/node → `NodeIncomingMessage` = `NodeFallbackRequest`
-//                           `NodeServerResponse`   = `NodeFallbackResponse`
-//                           Arcara-specific members still fully typed.
-//                           No `any` index signature — consumers get clear
-//                           errors on unknown members instead of silent `any`.
-//
-// This pattern is used by Hono, tRPC, and other framework packages that must
-// work in environments where @types/node may not be present (e.g. Bun, Deno,
-// or browser-targeted bundler configs).
-//
-// IMPORTANT: the fallback interfaces below are NOT duplicating Node types.
-// They are a minimal, accurate subset of the members Arcara uses internally
-// and that consumers legitimately need on req/res in handlers. Members not
-// listed here are genuinely not part of Arcara's API surface.
-
-/**
- * Minimal request shape used when `@types/node` is not available.
- * Covers all members accessed by Arcara internals and handler code.
- * @internal
- */
-export interface NodeFallbackRequest {
-  method?: string;
-  url?: string;
-  headers: Record<string, string | string[] | undefined>;
-  socket: { destroyed: boolean } | null;
-  on(event: string, listener: (...args: unknown[]) => void): this;
-  removeListener(event: string, listener: (...args: unknown[]) => void): this;
-  pause(): this;
-  destroy(error?: Error): this;
-}
-
-/**
- * Minimal response shape used when `@types/node` is not available.
- * Covers all members accessed by Arcara internals and handler code.
- * @internal
- */
-export interface NodeFallbackResponse {
-  statusCode: number;
-  writableEnded: boolean;
-  destroyed: boolean;
-  req: NodeFallbackRequest;
-  setHeader(name: string, value: number | string | readonly string[]): this;
-  getHeader(name: string): number | string | string[] | undefined;
-  removeHeader(name: string): this;
-  writeHead(
-    statusCode: number,
-    headers?: Record<string, string | number | readonly string[]>,
-  ): this;
-  write(
-    chunk: string | Buffer,
-    callback?: (err?: Error | null) => void,
-  ): boolean;
-  end(chunk?: string | Buffer | (() => void), callback?: () => void): this;
-  once(event: string, listener: (...args: unknown[]) => void): this;
-}
-
 // ── Global module augmentation ───────────────────────────────────────────────
 //
 // Declares Arcara's additions on Node's built-in types so they are visible
@@ -130,7 +60,7 @@ declare module 'node:http' {
      *
      * `undefined` for GET, DELETE, HEAD, OPTIONS.
      */
-    body: unknown;
+    body: any;
   }
 
   interface ServerResponse {
@@ -202,7 +132,7 @@ export interface ArcaraRequest<
    * Parsed request body.
    * `unknown` for POST/PUT/PATCH, `undefined` for all other methods.
    */
-  body: Method extends 'POST' | 'PUT' | 'PATCH' ? unknown : undefined;
+  body: Method extends 'POST' | 'PUT' | 'PATCH' ? any : undefined;
 }
 
 /**

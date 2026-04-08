@@ -122,7 +122,7 @@ export abstract class Layer implements Dispatchable {
 
   /**
    * Registers a POST route handler.
-   * `req.body` is typed as `unknown` for POST routes.
+   * `req.body` is typed as `any` for POST routes.
    *
    * @example
    * app.post('/users', (req, res) => {

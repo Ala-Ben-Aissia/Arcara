@@ -163,8 +163,7 @@ is implemented at `src/utils/static.ts` and supports:
 Usage (example):
 
 ```ts
-import { Arcara } from 'arcara';
-import { serveStatic } from './utils/static.js'; // repo/local import
+import { Arcara, serveStatic } from 'arcara';
 
 const app = new Arcara();
 app.use(serveStatic('./public'));

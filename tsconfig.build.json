@@ -1,41 +1,19 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-
-  // Inherits everything from the base config.
-  // Only overrides what differs for production output.
   "extends": "./tsconfig.json",
-
   "compilerOptions": {
-    // ── Tighten for production ────────────────────────────────────────────────
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-
-    // IMPORTANT: Do NOT set removeComments: true.
-    // When declaration: true is active, TypeScript strips comments from .js
-    // output but PRESERVES them in .d.ts files — that's the correct behavior.
-    // Setting removeComments: true also strips JSDoc from .d.ts, which breaks
-    // all consumer autocompletion tooltips (hover docs, @param hints, @example).
-    // Comments stay in .d.ts regardless; tsup's minification handles .js.
-
-    // declarationMap: false for the published artifact.
-    // .d.ts.map files let consumers "Go to Definition" and land in the original
-    // .ts source — useful locally, unnecessary in node_modules.
-    // Keeps the published dist/ lean.
     "declarationMap": false,
-
     "sourceMap": false
   },
-
-  // Only compile src/ — tests are excluded from the build artifact entirely.
   "include": ["src"],
   "exclude": [
     "node_modules",
     "dist",
     "src/tests/",
-    "src/utils/",
     "**/*.test.ts",
     "**/*.spec.ts",
-    "src/playground/",
-    "src/Layer.ts"
+    "src/playground/"
   ]
 }

@@ -1,5 +1,5 @@
 /**
- * Arcara — A TypeScript-native, zero-runtime-dependency Node.js HTTP framework.
+ * Arcara — A TypeScript-native, zero-dependency Node.js HTTP framework.
  *
  * @example
  * ```ts
@@ -50,7 +50,3 @@ export {
   type NextFn,
   type RouteHandler,
 } from './types.js';
-
-// ── Not exported (intentionally internal) ─────────────────────────────────────
-// Route, StoredMiddleware, StoredChild, Dispatchable,
-// ExtractParams — used internally only; not part of the public contract.

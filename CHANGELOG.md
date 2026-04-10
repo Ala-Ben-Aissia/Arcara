@@ -7,136 +7,52 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-10
+
+### Fixed
+
+- **Critical:** Moved `@types/node` from `dependencies` to `peerDependencies` to prevent type conflicts in consumer projects. Install `@types/node` matching your Node.js version.
+- Declared `sideEffects` for core entry points to prevent bundlers from tree-shaking the `ServerResponse` prototype augmentation — fixes runtime errors where `res.json()` and `res.send()` would be undefined in aggressively optimized builds.
+- Added missing `tsx` to `devDependencies`, fixing test execution in clean environments and CI.
+
+### Changed
+
+- Removed redundant `typesVersions` field from `package.json` — type resolution is fully handled by the `exports` map.
+- Added `packageManager: "pnpm@10.x.x"` to enforce consistent package manager usage across environments.
+
 ## [0.1.9] - 2026-04-07
 
-- `serveStatic` no longer accepts a `prefix` option — use `app.use('/prefix', serveStatic('./dir'))` instead. The router now handles prefix stripping consistently with all other middleware.
+### Changed
+
+- `serveStatic` no longer accepts a `prefix` option. Use `app.use('/prefix', serveStatic('./dir'))` instead — prefix stripping is now handled consistently by the router.
 
 ## [0.1.8] - 2026-04-07
 
 ### Added
 
-- `serveStatic(root, options)` middleware for serving static assets with safe
-  path resolution, index-file fallback, optional `prefix` mounting, `HEAD`
-  support, streaming via `pipeline`, and extension/magic-byte content-type
-  detection.
-- Improved `detectContentType` behavior and added a small in-memory sniff cache
-  (mtime+size) to avoid repeated I/O for unchanged files.
-- Conditional TypeScript type bridge so exported `ArcaraRequest` /
-  `ArcaraResponse` resolve to real Node types when `@types/node` is present,
-  and to minimal fallback interfaces otherwise.
-- Module augmentations for both `node:http` and `http` so editors with Node
-  typings show `req.params`, `req.query`, `req.body` and `res.status` /
-  `res.json` / `res.send` helpers.
-
-### Changed
-
-- Packaging and type emission: `@types/node` is listed as a peer dependency
-  to make consumer expectations explicit; declaration emission was adjusted to
-  include the conditional type bridge so consumers get stable inference.
-- Static serving now awaits the stream pipeline and guards against writing
-  headers after the response has finished, eliminating subtle HTTP parser
-  races.
+- `serveStatic(root, options)` middleware for serving static assets: safe path resolution, `index.html` fallback, `HEAD` support, streaming with backpressure handling, and extension + magic-byte MIME detection.
 
 ### Fixed
 
-- Fixed streaming lifecycle bugs that could produce `HPE_INVALID_CONSTANT`
-  parser errors or header-after-end races by awaiting `pipeline()` and
-  handling errors synchronously.
-- Improved content-type heuristics for unknown extensions and text snippets
-  (HTML/SVG/CSS detection) to avoid incorrect `text/plain` responses.
-- Added tests for static serving and stabilized flaky streaming-related tests.
+- Streaming lifecycle bugs that could produce `HPE_INVALID_CONSTANT` parser errors or header-after-end races — resolved by awaiting `pipeline()` and handling errors synchronously.
+- Improved content-type detection for unknown extensions and text snippets (HTML/SVG/CSS) to avoid incorrect `text/plain` responses.
 
 ## [0.1.1] - 2026-04-06
 
 ### Fixed
 
-- Fixed HTML detection regex...
+- Improved HTML detection to support partial HTML fragments, not just full documents.
 
-### Changed
-
-- Improved HTML detection to support partial HTML fragments instead of only full documents
-
-## [0.1.0] — 2026-03-23
-
-### Fixed
-
-- OPTIONS preflight requests now correctly run the full middleware chain  
-  (CORS, auth, logging, rate-limiting, etc.) before falling back to the  
-  automatic `204 No Content + Allow` response.  
-  Explicit `app.options()` routes can now override the default behavior.
+## [0.1.0] - 2026-03-23
 
 ### Added
 
-- Core type definitions, `HttpMethod`, `ExtractParams`,
-  `RouteHandler`, `Route`, `Middleware`, `StoredMiddleware`, `StoredChild`,
-  `ErrorHandler`, `ArcaraError`
-- `Dispatchable` interface to break the `Layer` → `types` circular dependency
-- `node:http` module augmentation for `params`, `query`, `body` on
-  `IncomingMessage` and `res.status` / `res.json` / `res.send` on
-  `ServerResponse`
-- `logger` with colored terminal output: per-method colors for requests,
-  server start message, and recursive cause chain display for errors
-  (including `ArcaraError` status code in the error name)
-- `compilePath` converts a path pattern string into a `RegExp` and an
-  ordered list of param names. Trailing slashes are matched optionally
-  and regex special characters are escaped. Accepts a `prefix` flag that
-  switches the terminator from `\/?$` to `(?:\/.*)?$`, enabling correct
-  sub-path matching when compiling child router mount points
-- `matchRoute` iterates the route table and returns a discriminated union:
-  - `success: true` → matched route + extracted params object
-  - `success: false` → code `404` (path not found) or `405` (path matched,
-    method did not), so callers can return the correct HTTP status
-- `detectContentType` inspects response values without relying on caller
-  hints: magic byte sniffing for binary data (JPEG, PNG, GIF, WEBP, BMP,
-  TIFF, AVIF, HEIC, HEIF), HTML/SVG/CSS pattern matching for strings,
-  `application/json` for objects, and request `Content-Type` fallback for
-  unrecognized binary
-- `validateStatus` rejects non-integer and out-of-range (`< 100` or `> 999`)
-  status codes, returning `{ error }` so callers decide whether to throw
-- `validateJson` catches functions, BigInts, symbols, and circular references
-  before they reach `JSON.stringify`, returning `{ data }` on success or
-  `{ error }` on failure — never throws
-- `safeWrite` respects Node.js stream backpressure: pauses the readable if
-  the writable buffer is full and resumes on drain. Readable is nullable
-  for contexts without a paired incoming stream
-- `abstract Layer`: shared base for `Router` and `Arcara` providing:
-  - type-safe route registration (`get`, `post`, `put`, `patch`, `delete`)
-    with `ExtractParams` inference and method-narrowed `body` typing
-  - middleware mounting (`use(handler)` / `use(prefix, handler)`)
-  - child router mounting (`use(prefix, router)`) with prefix param extraction
-  - recursive `dispatch`: runs middlewares, matches own routes, recurses into
-    children, throws `404`/`405` with correct distinction
-  - `runStack` with double-`next()` detection
-  - `onError` for scoped error handlers — innermost layer that defines one
-    handles errors in its subtree
-  - `collectAllowedMethods` for full recursive `OPTIONS` support
-  - default error handler writes raw `statusCode` + JSON without using proto
-    methods, safe as a last line of defense
-- `Router`: concrete `Layer` subclass with no additional logic, used to
-  create mountable sub-applications
-- `Arcara`: extends `Layer` with:
-  - `ServerResponse` prototype augmentation: `res.status` (throws on invalid
-    code), `res.json` (validates serializability, writes via `safeWrite`),
-    `res.send` (auto-detects content type, sets `Content-Length`, respects
-    `HEAD`)
-  - stream-based body parsing with 1MB limit enforced via `req.pause()` on
-    overflow; listener cleanup via explicit `removeListener` prevents leaks;
-    client disconnect resolves silently
-  - `OPTIONS` handling via `collectAllowedMethods` — responds `204` with
-    `Allow` header
-  - single `res.once('finish')` listener for socket cleanup and request
-    logging across all exit paths
-  - last-resort catch bypasses all proto methods to avoid throw cascade
-  - `listen(port, host, callback)` — defaults to `0.0.0.0`
-  - Request timeout (30s default) with proper cleanup to prevent hanging connections
-- `src/index.ts`: single entry point re-exporting Arcara (default),
-  Router, ArcaraError, and all public types. No logic lives here.
-- `src/playground/app.ts`: local sandbox exercising the full feature
-  set — root routes, mounted routers, nested params, middleware,
-  body parsing, and scoped error handlers. Excluded from tsconfig
-  build output. Run with: npm run play
-
-### Repository structure, license, and tooling configuration
-
-- Repository structure, `LICENSE` (MIT), and tooling configuration
-  (`tsconfig.json`, `.gitignore`, `package.json`)
+- Initial release of Arcara — a TypeScript-first, zero-runtime-dependency Node.js HTTP framework.
+- Radix-tree router with compile-time param inference from path strings.
+- Middleware system with global and prefix-scoped handlers.
+- Automatic body parsing for JSON, URL-encoded, text, and binary payloads.
+- Centralized error handling via `app.onError()`, scoped per router.
+- `HttpError` with optional structured `details` payload.
+- `serveStatic` middleware with ETag, `Last-Modified`, and `304` support.
+- `Router` class for modular, mountable route definitions.
+- Graceful shutdown via `app.close()`.

@@ -2,7 +2,7 @@
   "name": "arcara",
   "version": "0.2.0",
   "description": "A TypeScript-native, zero-dependency Node.js HTTP framework",
-  "author": "Aloulou <alabenaissia@users.noreply.github.com>",
+  "author": "Ala Ben Aissia <alabenaissia@outlook.com>",
   "license": "MIT",
   "private": false,
   "engines": {
@@ -31,6 +31,26 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./cors": {
+      "import": "./dist/middlewares/cors.js",
+      "require": "./dist/middlewares/cors.cjs",
+      "types": "./dist/middlewares/cors.d.ts"
+    },
+    "./cookies": {
+      "import": "./dist/middlewares/cookies.js",
+      "require": "./dist/middlewares/cookies.cjs",
+      "types": "./dist/middlewares/cookies.d.ts"
+    },
+    "./logger": {
+      "import": "./dist/middlewares/logger.js",
+      "require": "./dist/middlewares/logger.cjs",
+      "types": "./dist/middlewares/logger.d.ts"
+    },
+    "./rate-limit": {
+      "import": "./dist/middlewares/rateLimit.js",
+      "require": "./dist/middlewares/rateLimit.cjs",
+      "types": "./dist/middlewares/rateLimit.d.ts"
+    },
     ".": {
       "import": {
         "types": "./dist/index.d.ts",

@@ -1,6 +1,11 @@
 import { defineConfig } from 'tsup';
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: [
+    'src/index.ts',
+    'src/middlewares/cors.ts',
+    'src/middlewares/cookies.ts',
+    'src/middlewares/rateLimit.ts',
+  ],
   format: ['esm', 'cjs'],
   minify: true,
   minifyIdentifiers: true,

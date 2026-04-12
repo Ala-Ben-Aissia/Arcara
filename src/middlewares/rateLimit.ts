@@ -1,3 +1,4 @@
+import type { IncomingMessage } from 'node:http';
 import { type Middleware, HttpError } from '../types.js';
 
 export interface RateLimitOptions {
@@ -12,7 +13,7 @@ export interface RateLimitOptions {
   /**
    * Custom key extractor. Defaults to req.socket.remoteAddress.
    */
-  keyBy?: (req: import('http').IncomingMessage) => string;
+  keyBy?: (req: IncomingMessage) => string;
   /**
    * Called when limit is exceeded. Defaults to throwing HttpError(429).
    */

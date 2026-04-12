@@ -12,7 +12,7 @@ import type {
   StoredMiddleware,
 } from './types.js';
 import { HttpError } from './types.js';
-import { logger } from './utils/logger.js';
+import { internalLogger } from './utils/logger.js';
 import { compilePath, RadixTree } from './utils/routing.js';
 
 export abstract class Layer implements Dispatchable {
@@ -66,7 +66,7 @@ export abstract class Layer implements Dispatchable {
    * @example
    * app.use('/api', authMiddleware);
    */
-  use(prefix: `/${string}`, handler: Middleware): this;
+  use(prefix: string, handler: Middleware): this;
 
   /**
    * Mounts a child `Layer` (sub-router) at a path prefix.
@@ -77,10 +77,10 @@ export abstract class Layer implements Dispatchable {
    * users.get('/:id', getUser);
    * app.use('/users', users);
    */
-  use(prefix: `/${string}`, handler: Layer): this;
+  use(prefix: string, handler: Layer): this;
 
   use(
-    prefixOrHandler: `/${string}` | Middleware,
+    prefixOrHandler: string | Middleware,
     handler?: Middleware | Layer,
   ): this {
     if (typeof prefixOrHandler === 'function') {
@@ -375,7 +375,7 @@ export abstract class Layer implements Dispatchable {
   ): void {
     const err = HttpError.from(e);
 
-    if (err.status >= 500) logger.error(err);
+    if (err.status >= 500) internalLogger.error(err);
 
     if (!res.writableEnded) {
       this.errorHandler(err, req, res, () => {});

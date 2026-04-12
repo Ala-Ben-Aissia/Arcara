@@ -30,7 +30,7 @@ function getCauseChain(cause: unknown) {
   return chain;
 }
 
-export const logger = {
+export const internalLogger = {
   request(
     method: HttpMethod,
     pathname: string,

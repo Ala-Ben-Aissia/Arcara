@@ -1,8 +1,8 @@
-import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import http from 'node:http';
-import { Arcara, HttpError } from '../index.js';
 import type { IncomingHttpHeaders } from 'node:http';
+import http from 'node:http';
+import { after, before, describe, it } from 'node:test';
+import { Arcara, HttpError } from '../index.js';
 
 // ── Test server harness ───────────────────────────────────────────────────────
 //
@@ -238,11 +238,11 @@ describe('Arcara — middleware', () => {
   before(async () => {
     server = await createTestServer((app) => {
       app.use((req, _res, next) => {
-        (req as any).tagged = true;
+        req.tagged = true;
         next();
       });
       app.get('/check', (req, res) => {
-        res.json({ tagged: (req as any).tagged });
+        res.json({ tagged: req.tagged });
       });
     });
   });

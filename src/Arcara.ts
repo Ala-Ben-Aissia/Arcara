@@ -8,7 +8,7 @@ import { Layer } from './Layer.js';
 import type { ArcaraOptions, HttpMethod } from './types.js';
 import { HttpError } from './types.js';
 import { detectContentType } from './utils/content.js';
-import { logger } from './utils/logger.js';
+import { internalLogger } from './utils/logger.js';
 import { safeWrite } from './utils/stream.js';
 import { validateJson, validateStatus } from './utils/validation.js';
 
@@ -37,7 +37,7 @@ proto.json = function (data: unknown) {
 
   const { data: serialized, error } = validateJson(data);
   if (error) {
-    logger.error(error);
+    internalLogger.error(error);
     safeWrite(this.req, this, stringifyError(error));
     return this.end();
   }
@@ -122,11 +122,15 @@ export class Arcara extends Layer {
   private readonly bodyLimit: number;
   private readonly timeoutMs: number;
   private readonly openSockets = new Set<import('node:net').Socket>();
+  startupLog: boolean;
+  PORT = 3000;
+  HOST = 'localhost';
 
   constructor(options: ArcaraOptions = {}) {
     super();
     this.bodyLimit = options.bodyLimit ?? 1_048_576;
     this.timeoutMs = options.timeout ?? 30_000;
+    this.startupLog = options.startupLog ?? true;
     this.server = createServer(this.handleRequest.bind(this));
     this.server.on('connection', (socket) => {
       this.openSockets.add(socket);
@@ -257,7 +261,6 @@ export class Arcara extends Layer {
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> {
-    const startTime = Date.now();
     const { method, pathname, query } = this.extractRequestInfo(req);
 
     // Initialize augmented fields — never undefined downstream
@@ -283,7 +286,7 @@ export class Arcara extends Layer {
 
         const { data: serialized, error } = validateJson(data);
         if (error) {
-          logger.error(error);
+          internalLogger.error(error);
           safeWrite(this.req, this, stringifyError(error));
           return this.end();
         }
@@ -327,14 +330,7 @@ export class Arcara extends Layer {
     // Single finish listener covers every exit path uniformly:
     // success, error, timeout, early return. No per-branch cleanup needed.
     res.once('finish', () => {
-      // Do NOT call req.destroy() here — it tears down the TCP socket
-      // immediately, racing with the client reading the response body and
-      // causing ECONNRESET on the client side. Node's HTTP keep-alive
-      // connection management handles socket reuse and teardown correctly.
-      // req.destroy() is only appropriate on client disconnect (dead socket),
-      // which is already handled via ClientDisconnectedError in parseBody.
       clearTimeout(timeout);
-      logger.request(method, pathname, res.statusCode, Date.now() - startTime);
     });
 
     try {
@@ -401,10 +397,12 @@ export class Arcara extends Layer {
     hostOrCallback?: string | (() => void),
     maybeCallback?: () => void,
   ): this {
-    let host = 'localhost';
+    let host = this.HOST;
+    this.PORT = port;
     let callback: (() => void) | undefined;
 
     if (typeof hostOrCallback === 'string') {
+      this.HOST = hostOrCallback;
       host = hostOrCallback;
       callback = maybeCallback;
     } else if (typeof hostOrCallback === 'function') {
@@ -412,7 +410,7 @@ export class Arcara extends Layer {
     }
 
     this.server.listen(port, host, () => {
-      logger.start(host, port);
+      if (this.startupLog) internalLogger.start(host, port);
       callback?.();
     });
 

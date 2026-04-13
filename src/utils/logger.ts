@@ -51,7 +51,14 @@ export const internalLogger = {
     const meth = methodCol(method);
 
     const statCol =
-      status < 300 ? color.green : status < 400 ? color.yellow : color.red;
+      status < 300
+        ? color.green
+        : status < 400
+          ? color.cyan
+          : status < 500
+            ? color.yellow
+            : color.red;
+
     const stat = statCol(status.toString());
 
     const dur = color.dim(`${durationMs}ms`);

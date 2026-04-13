@@ -31,6 +31,8 @@ export type ExtractParams<Path extends string> =
       ? Param
       : never;
 
+export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
+
 // ── Node built-in augmentation ──────────────────────────────────────────────
 //
 // Arcara augments Node's IncomingMessage and ServerResponse directly so that:
@@ -42,6 +44,19 @@ export type ExtractParams<Path extends string> =
 // This block is a no-op when @types/node is absent — nothing to augment —
 // but ArcaraRequest / ArcaraResponse below still compile correctly via their
 // fallback intersection types.
+
+export type Redirect = {
+  (target: `/${string}`): void;
+  (status: RedirectStatus, target: `/${string}`): void;
+  /**
+   * Redirects to the Referer header if same-origin, otherwise to `fallback`.
+   * Safe against open redirect via manipulated Referer headers.
+   *
+   * @example
+   * res.redirect.back(req, '/home')
+   */
+  back(req: IncomingMessage, res: ServerResponse, fallback: string): void;
+};
 
 declare module 'node:http' {
   interface IncomingMessage {
@@ -184,6 +199,20 @@ declare module 'node:http' {
      * res.clearCookie('session')
      */
     clearCookie(name: string, options?: CookieOptions): this;
+    /**
+     * Redirects the client to `target` with an optional status code.
+     * Only absolute paths are accepted — external URLs are rejected
+     * to prevent open redirect vulnerabilities.
+     *
+     * Defaults to 302. Use 301 for permanent, 303 for post-redirect-get,
+     * 307/308 to preserve the request method.
+     *
+     * @example
+     * res.redirect('/dashboard')
+     * res.redirect(301, '/new-location')
+     * res.redirect.back(req, '/fallback')
+     */
+    redirect: Redirect;
   }
 }
 

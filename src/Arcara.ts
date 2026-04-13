@@ -86,64 +86,6 @@ proto.send = function (data: unknown) {
   return this.end();
 };
 
-/*
-function applyRedirect(
-    this: ServerResponse,
-    statusOrTarget: RedirectStatus | string,
-    maybeTarget?: string,
-  ) {
-    const [status, target] =
-      typeof statusOrTarget === 'number'
-        ? [statusOrTarget, maybeTarget!]
-        : [302, statusOrTarget];
-
-    // error: `Invalid redirect status, Expected one of ${[...VALID_STATUS]}`,
-    if (!VALID_STATUS.has(status as RedirectStatus)) {
-      throw new HttpError(
-        409,
-        `Invalid redirect status, Expected one of ${[...VALID_STATUS]}`,
-      );
-    }
-
-    if (!isSafeTarget(target)) {
-      throw new HttpError(
-        500,
-        'Unsafe redirect target, only absolute paths allowed',
-        {
-          target,
-        },
-      );
-    }
-    this.setHeader('Location', target);
-    this.statusCode = status;
-    this.end();
-  }
-*/
-/*
-
-      const referer = req.headers.referer ?? '';
-      const host = req.headers.host ?? '';
-      // Only follow referer if it's same-origin — blocks open redirect via Referer header
-      const isSameOrigin =
-        referer.startsWith(`http://${host}`) ||
-        referer.startsWith(`https://${host}`);
-
-      const target = isSameOrigin ? new URL(referer).pathname : fallback;
-      // ✅ Prevent self-redirect
-      const currentPath = req.url?.split('?')[0] ?? '';
-
-      if (target === currentPath) {
-        const err = new HttpError(409, 'Redirect loop detected', {
-          code: 'REDIRECT_LOOP',
-          target,
-          currentPath,
-        });
-        internalLogger.error(err);
-        throw err;
-      }
-      applyRedirect(res, 302, target);
-    
-*/
 proto.redirect = Object.assign(
   function (
     this: ServerResponse,
@@ -166,10 +108,6 @@ function stringifyError(error: Error): string {
     return '{"error":"Internal Server Error"}';
   }
 }
-
-// Note: we attach `status/json/send` directly to each `res` instance in
-// `handleRequest` because importing `ServerResponse`  runtime value can
-// be problematic under `verbatimModuleSyntax` / Node ESM type-only exports.
 
 // ── Application ─────────────────────────────────────────────────────────────
 

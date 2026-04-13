@@ -23,10 +23,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# for me
-/src/DevPulse
-/src/Vaultex
-
 .npmrc
 *.tgz
 

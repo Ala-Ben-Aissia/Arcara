@@ -5,7 +5,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "declarationMap": false,
-    "sourceMap": false
+    "sourceMap": false,
+    "emitDeclarationOnly": true
   },
   "include": ["src"],
   "exclude": [

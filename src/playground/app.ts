@@ -17,6 +17,7 @@
  */
 
 import { Arcara, type Middleware, Router } from '../index.js';
+import { logger } from '../middlewares/logger.js';
 
 // ── Fake DB ──────────────────────────────────────────────────────────────────
 
@@ -41,10 +42,19 @@ const app = new Arcara();
 
 // Global middleware — stamps every request with a correlation ID
 // app.use((req, _res, next) => {
-//   (req as any).requestId = Math.random().toString(36).slice(2, 10);
-//   console.log(`[${(req as any).requestId}] ${req.method} ${req.url}`);
+//   req.requestId = Math.random().toString(36).slice(2, 10);
+//   console.log(`[${req.requestId}] ${req.method} ${req.url}`);
 //   next();
 // });
+
+app.use(
+  logger({
+    timestamp: false,
+    skip(req) {
+      return req.url === '/.well-known/appspecific/com.chrome.devtools.json';
+    },
+  }),
+);
 
 // Prefixed middleware — only runs under /api
 app.use('/api', (_req, res, next) => {
@@ -55,6 +65,7 @@ app.use('/api', (_req, res, next) => {
 // ── Health ───────────────────────────────────────────────────────────────────
 
 app.get('/', (_req, res) => {
+  res.redirect('/api/users');
   res.json({ status: 'ok', framework: 'Arcara' });
 });
 
@@ -64,9 +75,7 @@ const usersRouter = new Router();
 
 // Router-level error handler (overrides default for this sub-tree)
 usersRouter.onError((err, _req, res) => {
-  res.statusCode = err.status ?? 500;
-  res.setHeader('content-type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify({ error: err.message, source: 'usersRouter' }));
+  return res.status(500).json({ error: err.message, source: 'usersRouter' });
 });
 
 // GET /api/users?role=admin
@@ -147,8 +156,7 @@ app.post('/form', (req, res) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-
-app.listen(3000, 'localhost');
+app.listen(5173);
 
 /**
  * hey please save me the types configuration is a disastrous, i published the package and tried to use it and there is no autocompletion when i try to access property of req using req. or res.

@@ -1,25 +1,29 @@
 import { defineConfig } from 'tsup';
+
 export default defineConfig({
   entry: [
     'src/index.ts',
     'src/middlewares/cors.ts',
+    'src/utils/static.ts',
     'src/middlewares/cookies.ts',
+    'src/middlewares/logger.ts',
     'src/middlewares/rateLimit.ts',
   ],
-  format: ['esm', 'cjs'],
-  minify: true,
-  minifyIdentifiers: true,
-  minifySyntax: true,
-  minifyWhitespace: true,
+  format: ['esm'],
   clean: true,
+  sourcemap: false,
   splitting: false,
   treeshake: true,
-  tsconfig: 'tsconfig.build.json',
-  sourcemap: false,
+  minify: true,
   target: 'node18',
   platform: 'node',
-  external: [],
-  outExtension({ format }) {
-    return { js: format === 'cjs' ? '.cjs' : '.js' };
-  },
+  external: [
+    'node:http',
+    'node:stream',
+    'node:buffer',
+    'node:querystring',
+    'node:url',
+    'node:fs',
+    'node:path',
+  ],
 });

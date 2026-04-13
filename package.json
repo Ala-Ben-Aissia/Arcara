@@ -1,10 +1,43 @@
 {
   "name": "arcara",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "A TypeScript-native, zero-dependency Node.js HTTP framework",
   "author": "Ala Ben Aissia <alabenaissia@outlook.com>",
   "license": "MIT",
-  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./static": {
+      "types": "./dist/utils/static.d.ts",
+      "default": "./dist/utils/static.js"
+    },
+    "./cors": {
+      "types": "./dist/middlewares/cors.d.ts",
+      "default": "./dist/middlewares/cors.js"
+    },
+    "./cookies": {
+      "types": "./dist/middlewares/cookies.d.ts",
+      "default": "./dist/middlewares/cookies.js"
+    },
+    "./logger": {
+      "types": "./dist/middlewares/logger.d.ts",
+      "default": "./dist/middlewares/logger.js"
+    },
+    "./rate-limit": {
+      "types": "./dist/middlewares/rateLimit.d.ts",
+      "default": "./dist/middlewares/rateLimit.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
@@ -14,9 +47,8 @@
     "router",
     "middleware",
     "typescript",
-    "node",
-    "zero-dependency",
-    "esm"
+    "esm",
+    "zero-dependency"
   ],
   "repository": {
     "type": "git",
@@ -26,61 +58,13 @@
     "url": "https://github.com/Ala-Ben-Aissia/arcara/issues"
   },
   "homepage": "https://arcara.netlify.app",
-  "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    "./cors": {
-      "import": "./dist/middlewares/cors.js",
-      "require": "./dist/middlewares/cors.cjs",
-      "types": "./dist/middlewares/cors.d.ts"
-    },
-    "./cookies": {
-      "import": "./dist/middlewares/cookies.js",
-      "require": "./dist/middlewares/cookies.cjs",
-      "types": "./dist/middlewares/cookies.d.ts"
-    },
-    "./logger": {
-      "import": "./dist/middlewares/logger.js",
-      "require": "./dist/middlewares/logger.cjs",
-      "types": "./dist/middlewares/logger.d.ts"
-    },
-    "./rate-limit": {
-      "import": "./dist/middlewares/rateLimit.js",
-      "require": "./dist/middlewares/rateLimit.cjs",
-      "types": "./dist/middlewares/rateLimit.d.ts"
-    },
-    ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
-      }
-    }
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE"
-  ],
   "scripts": {
-    "build:js": "tsup --config tsup.config.ts",
-    "build:dts": "tsc -p tsconfig.build.json --emitDeclarationOnly --outDir dist && node scripts/postprocess-dts.cjs",
-    "build:dcts": "node -e \"const fs=require('fs');const s=fs.readFileSync('dist/index.d.ts','utf8');fs.writeFileSync('dist/index.d.cts',s);\"",
-    "build": "pnpm build:js && pnpm build:dts && pnpm build:dcts",
-    "dev": "tsup --config tsup.config.ts --watch",
+    "build": "tsup && tsc -p tsconfig.build.json && node scripts/postprocess-dts.cjs",
+    "dev": "tsup --watch",
     "test": "tsx --test src/tests/**/*.test.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "typecheck:tests": "tsc -p tsconfig.test.json",
-    "typecheck:build": "tsc -p tsconfig.build.json --noEmit",
-    "lint": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "prepublishOnly": "pnpm clean && pnpm build && pnpm run test"
+    "prepublishOnly": "pnpm clean && pnpm build && pnpm test"
   },
   "peerDependencies": {
     "@types/node": ">=18.0.0"
@@ -96,6 +80,5 @@
     "tsx": "^4.7.0",
     "typescript": "6.0.2"
   },
-  "packageManager": "pnpm@10.0.0",
-  "dependencies": {}
+  "packageManager": "pnpm@10.0.0"
 }

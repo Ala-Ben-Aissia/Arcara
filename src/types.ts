@@ -1,6 +1,63 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { CookieOptions } from './middlewares/cookies.js';
 
+export type ImageMimeType =
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/gif'
+  | 'image/webp'
+  | 'image/bmp'
+  | 'image/tiff'
+  | 'image/avif'
+  | 'image/heic'
+  | 'image/heif'
+  | 'image/svg+xml';
+
+export type VideoMimeType =
+  | 'video/mp4'
+  | 'video/webm'
+  | 'video/ogg'
+  | 'video/x-msvideo';
+
+export type AudioMimeType =
+  | 'audio/mpeg'
+  | 'audio/mp4'
+  | 'audio/wav'
+  | 'audio/flac'
+  | 'audio/aac'
+  | 'audio/ogg';
+
+export type FontMimeType = 'font/woff' | 'font/woff2' | 'font/ttf' | 'font/otf';
+
+export type ApplicationMimeType =
+  | 'application/json'
+  | 'application/xml'
+  | 'application/pdf'
+  | 'application/zip'
+  | 'application/wasm'
+  | 'application/octet-stream';
+
+export type TextMimeType =
+  | 'text/html'
+  | 'text/css'
+  | 'text/plain'
+  | 'text/javascript'
+  | 'text/xml';
+
+type Charset = `; charset=${string}`;
+
+export type MimeType =
+  | ImageMimeType
+  | VideoMimeType
+  | AudioMimeType
+  | FontMimeType
+  | ApplicationMimeType
+  | TextMimeType;
+
+export type ContentType =
+  | MimeType
+  | `${TextMimeType | 'application/xml' | 'image/svg+xml'}${Charset}`;
+
 // ── HTTP Method ─────────────────────────────────────────────────────────────
 
 export type HttpMethod =
@@ -176,7 +233,7 @@ declare module 'node:http' {
      * res.send(Buffer.from([0xff, 0xd8])) // JPEG
      * res.send({ key: 'value' })          // JSON
      */
-    send(data: unknown): this;
+    send(data: unknown, contentType?: ContentType): this;
 
     /**
      * Sets a `Set-Cookie` header on the response.

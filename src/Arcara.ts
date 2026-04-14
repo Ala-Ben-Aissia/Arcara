@@ -7,6 +7,7 @@ import {
 import { Layer } from './Layer.js';
 import type {
   ArcaraOptions,
+  ContentType,
   HttpMethod,
   Redirect,
   RedirectStatus,
@@ -27,6 +28,13 @@ import { validateJson, validateStatus } from './utils/validation.js';
 // catch in handleRequest bypasses all proto methods and writes raw statusCode.
 
 const proto = ServerResponse.prototype;
+
+proto.status = function (code: number) {
+  const { error } = validateStatus(code);
+  if (error) throw error;
+  this.statusCode = code;
+  return this;
+};
 
 /**
  * Serializes `data` to JSON, sets `Content-Type: application/json`, writes
@@ -60,11 +68,14 @@ proto.json = function (data: unknown) {
  * - Respects HEAD — sends headers only, writes no body.
  * - Only sets `Content-Type` if not already set, allowing caller override.
  */
-proto.send = function (data: unknown) {
+proto.send = function (data: unknown, contentType?: ContentType) {
   if (data === undefined || this.writableEnded) return this;
 
   if (!this.getHeader('content-type')) {
-    this.setHeader('content-type', detectContentType(data, this.req));
+    this.setHeader(
+      'content-type',
+      contentType ?? detectContentType(data, this.req),
+    );
   }
 
   // Normalize to a writable chunk unconditionally — Content-Length must
@@ -136,8 +147,8 @@ export class Arcara extends Layer {
   private readonly timeoutMs: number;
   private readonly openSockets = new Set<import('node:net').Socket>();
   startupLog: boolean;
-  PORT = 3000;
-  HOST = 'localhost';
+  readonly PORT: number = 3000;
+  readonly HOST: string = 'localhost';
 
   constructor(options: ArcaraOptions = {}) {
     super();
@@ -205,7 +216,7 @@ export class Arcara extends Layer {
           } else if (
             contentType.includes('application/x-www-form-urlencoded')
           ) {
-            // URLSearchParams handles '+' , encoded '=' in values,
+            // URLSearchParams handles '+', encoded '=' in values,
             // and all other edge cases that manual splitting misses.
             req.body = Object.fromEntries(
               new URLSearchParams(raw.toString('utf-8')),
@@ -250,22 +261,30 @@ export class Arcara extends Layer {
   /**
    * Extracts method, pathname, and query string from `IncomingMessage`.
    * Uses the `URL` constructor for correct parsing of encoded paths.
-   * Falls back to `'/'` if `req.url` is missing or unparseable.
+   * Falls back to method `'GET'` and path `'/'` if `req.url` is missing or
+   * unparseable (e.g. a malformed `Host` header), returning a 400 rather
+   * than letting the parse error bubble up as a 500.
    */
   private extractRequestInfo(req: IncomingMessage): {
     method: HttpMethod;
     pathname: string;
     query: Record<string, string>;
   } {
-    const url = new URL(
-      req.url ?? '/',
-      `http://${req.headers.host ?? 'localhost'}`,
-    );
-    return {
-      method: (req.method ?? 'GET').toUpperCase() as HttpMethod,
-      pathname: url.pathname,
-      query: Object.fromEntries(url.searchParams),
-    };
+    const method = (req.method ?? 'GET').toUpperCase() as HttpMethod;
+
+    try {
+      const url = new URL(
+        req.url ?? '/',
+        `http://${req.headers.host ?? 'localhost'}`,
+      );
+      return {
+        method,
+        pathname: url.pathname,
+        query: Object.fromEntries(url.searchParams),
+      };
+    } catch {
+      throw new HttpError(400, 'Bad Request');
+    }
   }
 
   // ── Request lifecycle ─────────────────────────────────────────────────────
@@ -274,64 +293,25 @@ export class Arcara extends Layer {
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> {
-    const { method, pathname, query } = this.extractRequestInfo(req);
+    // extractRequestInfo can throw HttpError(400) on a malformed Host header.
+    // Declare outside try so the catch block can reference method for OPTIONS.
+    let method: HttpMethod;
+    let pathname: string;
+    let query: Record<string, string>;
+
+    try {
+      ({ method, pathname, query } = this.extractRequestInfo(req));
+    } catch (e) {
+      res.statusCode = 400;
+      res.setHeader('content-type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ error: 'Bad Request' }));
+      return;
+    }
 
     // Initialize augmented fields — never undefined downstream
     req.params = {};
     req.query = query;
-
-    // Attach Arcara helper methods to this response instance if absent.
-    // Doing this per-instance avoids runtime import/value issues with
-    // `ServerResponse` under strict module/type settings.
-    if (!res.status) {
-      res.status = function (code: number) {
-        const { error } = validateStatus(code);
-        if (error) throw error;
-        this.statusCode = code;
-        return this;
-      };
-
-      res.json = function (data: unknown) {
-        if (this.writableEnded) return this;
-        this.setHeader('content-type', 'application/json; charset=utf-8');
-
-        if (data === undefined) return this.end();
-
-        const { data: serialized, error } = validateJson(data);
-        if (error) {
-          internalLogger.error(error);
-          safeWrite(this.req, this, stringifyError(error));
-          return this.end();
-        }
-
-        safeWrite(this.req, this, serialized);
-        return this.end();
-      };
-
-      res.send = function (data: unknown) {
-        if (data === undefined || this.writableEnded) return this;
-
-        if (!this.getHeader('content-type')) {
-          this.setHeader('content-type', detectContentType(data, this.req));
-        }
-
-        const body =
-          data instanceof ArrayBuffer
-            ? Buffer.from(data)
-            : data instanceof Uint8Array
-              ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
-              : typeof data === 'string' || Buffer.isBuffer(data)
-                ? data
-                : JSON.stringify(data);
-
-        this.setHeader('content-length', Buffer.byteLength(body));
-
-        if (this.req.method === 'HEAD') return this.end();
-
-        safeWrite(this.req, this, body);
-        return this.end();
-      };
-    }
+    req.body = undefined;
 
     const timeout = setTimeout(() => {
       if (!res.writableEnded) {
@@ -342,19 +322,19 @@ export class Arcara extends Layer {
 
     // Single finish listener covers every exit path uniformly:
     // success, error, timeout, early return. No per-branch cleanup needed.
-    res.once('finish', () => {
-      clearTimeout(timeout);
-    });
+    res.once('finish', () => clearTimeout(timeout));
 
     try {
-      // OPTIONS: walk the full route tree for CORS preflight, then fall back
-      // to an automatic 204 + Allow header if no explicit handler responded.
+      // OPTIONS: walk the full route tree so explicit OPTIONS handlers and
+      // CORS middleware run normally. Falls back to an automatic 204 + Allow
+      // header if no handler ended the response.
+      //
+      // Note: req.body is intentionally not parsed for OPTIONS — RFC 9110
+      // permits a body but no standard semantics exist for it, and CORS
+      // preflights never carry one. Explicit OPTIONS handlers that require
+      // a body should call parseBody themselves.
       if (method === 'OPTIONS') {
-        // await this.dispatch(
-        //   pathname,
-        //   req ,
-        //   res ,
-        // );
+        await this.dispatch(pathname, req, res);
         if (!res.writableEnded) {
           const allowed = this.collectAllowedMethods(pathname);
           allowed.add('OPTIONS');
@@ -410,17 +390,14 @@ export class Arcara extends Layer {
     hostOrCallback?: string | (() => void),
     maybeCallback?: () => void,
   ): this {
-    let host = this.HOST;
-    this.PORT = port;
-    let callback: (() => void) | undefined;
+    const host =
+      typeof hostOrCallback === 'string' ? hostOrCallback : this.HOST;
+    const callback =
+      typeof hostOrCallback === 'function' ? hostOrCallback : maybeCallback;
 
-    if (typeof hostOrCallback === 'string') {
-      this.HOST = hostOrCallback;
-      host = hostOrCallback;
-      callback = maybeCallback;
-    } else if (typeof hostOrCallback === 'function') {
-      callback = hostOrCallback;
-    }
+    // Cast away readonly — these are set exactly once here, post-construction.
+    (this as { PORT: number }).PORT = port;
+    (this as { HOST: string }).HOST = host;
 
     this.server.listen(port, host, () => {
       if (this.startupLog) internalLogger.start(host, port);
@@ -431,18 +408,20 @@ export class Arcara extends Layer {
   }
 
   /**
-   * Gracefully stops the server. Stops accepting new connections and
-   * waits for in-flight requests to complete before resolving.
+   * Gracefully stops the server by closing the listening socket and
+   * destroying all tracked open connections immediately.
+   *
+   * Keep-alive sockets would otherwise prevent `server.close()` from
+   * resolving until each connection timed out on its own. In-flight requests
+   * on those sockets are aborted — callers that need true drain-before-close
+   * should stop routing new traffic (e.g. via a load balancer) before calling
+   * this method.
    *
    * @example
    * process.on('SIGTERM', () => app.close());
    */
   close(): Promise<void> {
     return new Promise((resolve, reject) => {
-      // Destroy all tracked open sockets immediately.
-      // server.close() alone only stops accepting new connections — it does
-      // not close existing keep-alive sockets, causing close() to hang
-      // indefinitely until those connections time out on their own.
       for (const socket of this.openSockets) {
         socket.destroy();
       }

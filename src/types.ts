@@ -72,7 +72,7 @@ declare module 'node:http' {
      *   req.params.id // string
      * })
      */
-    params: Record<string, string>;
+    params: {};
 
     /**
      * Parsed query string as a flat key-value map.
@@ -136,7 +136,7 @@ declare module 'node:http' {
      *   }
      * }
      */
-    [k: string]: any;
+    [k: string]: unknown;
   }
 
   interface ServerResponse {
@@ -236,7 +236,7 @@ declare module 'node:http' {
  * app.get('/users/:id/posts/:postId', (req, res) => {
  *   req.params.id     // ✅ string
  *   req.params.postId // ✅ string
- *   req.params.nope   // ✅ string (wide fallback — see module augmentation)
+ *   req.params.nope   // ❌ Property 'nope' does not exist on type 'Record<"id" | "postId", string>'
  * })
  *
  * // Explicit typing for reusable middleware or utility functions
@@ -245,12 +245,12 @@ declare module 'node:http' {
  * }
  */
 export type ArcaraRequest<
-  Params extends string = string,
+  Params extends string = never,
   Method extends HttpMethod = HttpMethod,
 > = IncomingMessage & {
   /**
    * Route params narrowed to the keys extracted from the path literal.
-   * Falls back to `Record<string, string>` when Params = string (default).
+   * Falls back to {} when Params = never (default).
    */
   params: Record<Params, string>;
 
@@ -303,7 +303,7 @@ export type NextFn = (err?: unknown) => void | Promise<void>;
  * app.use(logger)
  */
 export type Middleware<
-  Params extends string = string,
+  Params extends string = never,
   Method extends HttpMethod = HttpMethod,
 > = (
   req: ArcaraRequest<Params, Method>,
@@ -325,7 +325,7 @@ export type Middleware<
  * app.get('/users/:id', getUser)
  */
 export type RouteHandler<
-  Params extends string = string,
+  Params extends string = never,
   Method extends HttpMethod = HttpMethod,
 > = Middleware<Params, Method>;
 

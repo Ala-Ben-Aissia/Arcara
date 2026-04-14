@@ -1,6 +1,6 @@
 {
   "name": "arcara",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A TypeScript-native, zero-dependency Node.js HTTP framework",
   "author": "Ala Ben Aissia <alabenaissia@outlook.com>",
   "license": "MIT",

@@ -111,7 +111,7 @@ const validateId: Middleware = (req, _res, next) => {
 };
 
 app.delete('/users/:id', requireAuth, validateId, (req, res) => {
-  res.status(204).end();
+  return res.status(204);
 });
 ```
 
@@ -149,7 +149,7 @@ const users = new Router();
 
 users.get('/:id', (req, res) => res.json({ id: req.params.id }));
 users.post('/', (req, res) => res.status(201).json(req.body));
-users.delete('/:id', (req, res) => res.status(204).end());
+users.delete('/:id', (req, res) => res.status(204);
 
 app.use('/users', users);
 // GET /users/42 → users.get('/:id')
@@ -214,7 +214,7 @@ res.send('<h1>Hello</h1>'); // → text/html (auto-detected)
 res.send(buffer); // → application/octet-stream or sniffed MIME
 res.send({ key: 'value' }); // → application/json
 
-res.status(204).end();
+res.status(204);
 ```
 
 **Redirects:**
@@ -273,8 +273,7 @@ app.onError((err, _req, res) => {
 });
 ```
 
-Any thrown value (including plain `Error`) is normalized to `HttpError` via
-`HttpError.from()` before reaching `onError`. Plain errors become `500`.
+Any thrown value (including plain `Error`) is normalized to `HttpError`.
 
 ---
 

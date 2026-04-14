@@ -213,6 +213,12 @@ export abstract class Layer implements Dispatchable {
       await this.runStack(req, res, mwStack);
       if (res.writableEnded) return;
 
+      // OPTIONS: skip route lookup entirely. Arcara.handleRequest runs dispatch
+      // first so CORS middleware executes, then handles the 204 + Allow fallback
+      // itself. If the lookup ran here, paths without an explicit OPTIONS handler
+      // would 405 before handleRequest gets a chance to respond.
+      if (req.method === 'OPTIONS') return;
+
       // 2. Route lookup — HEAD falls back to GET per HTTP spec
       const effectiveMethod = (
         req.method === 'HEAD' ? 'GET' : (req.method ?? 'GET')

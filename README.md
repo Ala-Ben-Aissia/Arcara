@@ -14,7 +14,7 @@ Radix-tree routing. Compile-time param inference. Minimal, composable middleware
 
 - ⚡ **Fast routing** — Radix tree, O(k) path matching
 - 🧠 **Type-safe by default** — route params inferred from path string literals, no generics needed
-- 🪶 **Zero runtime dependencies** — In case you use Typescript, `@types/node` is the only install
+- 🪶 **Zero runtime dependencies** — no runtime deps, just Node.js
 - 🔌 **Familiar API** — Express-like middleware model, easier to reason about
 - 📦 **Batteries included** — body parsing, static files, error handling, redirects
 
@@ -34,7 +34,11 @@ npm install arcara
 ```
 
 Arcara requires `@types/node` for TypeScript support and declares it as a peer dependency.
-Many package managers will install it automatically, but if your setup does not, add it explicitly:
+
+Arcara's own exported types may work without it, but for a normal Node.js
+TypeScript project, you should install Node's type definitions in your app —
+especially if you use built-in modules like `node:buffer` or `node:os`, or
+augment Node request/response types:
 
 ```bash
 npm install -D @types/node
@@ -388,6 +392,10 @@ app.use(logger({ skip: (req) => req.url === '/health' }));
 
 Arcara works best with strict mode and `NodeNext` module resolution:
 
+For the best editor experience, use Arcara inside a configured TypeScript
+project with a `tsconfig.json`. Without one, some editors may treat files as an
+inferred project and resolve Node ambient types inconsistently.
+
 ```json
 {
   "compilerOptions": {
@@ -400,7 +408,8 @@ Arcara works best with strict mode and `NodeNext` module resolution:
 ```
 
 Param inference, `req.body`, `req.query`, `res.json()` and all response helpers
-are available automatically when `@types/node` is installed — no extra imports needed.
+work without extra imports. Installing `@types/node` also enables Node built-in
+modules and ambient types throughout your project.
 
 To attach custom properties to `req` from middleware, extend `IncomingMessage`
 in your project:

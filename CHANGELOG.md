@@ -7,6 +7,15 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-04-16
+
+- Fixed router dispatch so sibling mounted routers can still match after another child router returns 404 or 405.
+- Added tryDispatch support for nested layer traversal without prematurely writing routing errors.
+- Hardened redirects by validating status codes, rejecting unsafe targets, validating redirect.back fallbacks, and tightening same-origin referer checks.
+- Added CORS guardrails for invalid credentials: true with wildcard origins.
+- Added Vary: Origin handling for non-wildcard CORS responses.
+- Clarified middleware next() contract and corrected redirect.back documentation.
+
 ## [0.4.1] - 2026-04-15
 
 - Enhanced auto content type detection

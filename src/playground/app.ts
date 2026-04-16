@@ -1,21 +1,3 @@
-/**
- * Arcara Test Server
- *
- * Drop this next to your src/ and run:
- *   npx tsx test-server.ts
- *
- * Covers:
- *   - Global middleware (request ID injection)
- *   - Prefixed middleware (/api only)
- *   - CRUD routes with dynamic params + query
- *   - Mounted Router with its own onError
- *   - Chained handlers (auth → handler)
- *   - Body parsing: JSON + form-urlencoded
- *   - Forced 4xx/5xx error paths
- *   - Double-next() detection
- *   - HEAD / OPTIONS introspection
- */
-
 import { Arcara, type Middleware, Router } from '../index.js';
 import { logger } from '../middlewares/logger.js';
 

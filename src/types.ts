@@ -267,7 +267,7 @@ declare module 'node:http' {
      * @example
      * res.redirect('/dashboard')
      * res.redirect(301, '/new-location')
-     * res.redirect.back(req, '/fallback')
+     * res.redirect.back(req, res, '/fallback')
      */
     redirect: Redirect;
   }

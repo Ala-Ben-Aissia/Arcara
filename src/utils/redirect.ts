@@ -6,9 +6,9 @@ export const VALID_STATUS = new Set([
 ]) satisfies Set<RedirectStatus>;
 
 export function isSafeTarget(target: string) {
-  // Allow absolute paths only — blocks open redirect to external URLs
-  if (target.startsWith('/') && !target.startsWith('//')) return true;
-  return false;
+  // Allow absolute paths only — blocks open redirect to external URLs.
+  // Also rejects protocol-relative URLs like //evil.com.
+  return target.startsWith('/') && !target.startsWith('//');
 }
 
 export function applyRedirect(
@@ -20,18 +20,27 @@ export function applyRedirect(
     typeof statusOrTarget === 'number'
       ? [statusOrTarget, maybeTarget!]
       : [302, statusOrTarget];
-
   if (!VALID_STATUS.has(status as RedirectStatus)) {
-    return res.json({
-      error: `Invalid redirect status, Expected one of`,
-    });
+    res.statusCode = 400;
+    res.setHeader('content-type', 'application/json; charset=utf-8');
+    res.end(
+      JSON.stringify({
+        error: `Invalid redirect status: ${status}. Expected one of: ${[...VALID_STATUS].join(', ')}.`,
+      }),
+    );
+    return;
   }
 
   if (!isSafeTarget(target)) {
-    return res.json({
-      error: 'Unsafe redirect target, only absolute paths allowed',
-      target,
-    });
+    res.statusCode = 400;
+    res.setHeader('content-type', 'application/json; charset=utf-8');
+    res.end(
+      JSON.stringify({
+        error: 'Unsafe redirect target: only absolute paths are allowed.',
+        target,
+      }),
+    );
+    return;
   }
 
   res.setHeader('Location', target);
@@ -43,15 +52,46 @@ export function redirectBack(
   req: IncomingMessage,
   res: ServerResponse,
   fallback: string,
-) {
+): void {
+  // Validate the fallback up front — it's caller-controlled and must be safe
+  // regardless of what the Referer resolves to.
+  if (!isSafeTarget(fallback)) {
+    res.statusCode = 500;
+    res.setHeader('content-type', 'application/json; charset=utf-8');
+    res.end(
+      JSON.stringify({
+        error:
+          'Invalid fallback for redirect.back: only absolute paths are allowed.',
+        fallback,
+      }),
+    );
+    return;
+  }
+
   const referer = req.headers.referer ?? '';
   const host = req.headers.host ?? '';
 
-  // Only follow referer if it's same-origin — blocks open redirect via Referer header
+  // Only follow the Referer if it's same-origin — blocks open redirect via a
+  // manipulated Referer header. An empty host falls through to fallback.
+  // Match with a trailing slash or exact host to prevent prefix attacks:
+  // e.g. host=example.com must NOT match referer=https://example.com.evil.com/
   const isSameOrigin =
-    referer.startsWith(`http://${host}`) ||
-    referer.startsWith(`https://${host}`);
+    host.length > 0 &&
+    (referer.startsWith(`http://${host}/`) ||
+      referer.startsWith(`https://${host}/`) ||
+      referer === `http://${host}` ||
+      referer === `https://${host}`);
 
-  const target = isSameOrigin ? new URL(referer).pathname : fallback;
+  // Extract only the pathname — never forward query/hash into Location,
+  // and never emit a full URL even for same-origin Referers.
+  let target = fallback;
+  if (isSameOrigin) {
+    try {
+      target = new URL(referer).pathname;
+    } catch {
+      target = fallback;
+    }
+  }
+
   applyRedirect(res, 302, target);
 }

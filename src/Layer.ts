@@ -195,74 +195,127 @@ export abstract class Layer implements Dispatchable {
     res: ArcaraResponse,
   ): Promise<void> {
     try {
-      // 1. Prefix-matching middlewares
-      const mwStack = this.middlewares
-        .filter((mw) => this.matchesPrefix(pathname, mw.prefix))
-        .map((mw): Middleware => {
-          if (mw.prefix === '/') return mw.handler;
-
-          return async (req, res, next) => {
-            const original = req.url ?? '/';
-            req.url = original.slice(mw.prefix.length) || '/';
-            return Promise.resolve(mw.handler(req, res, next)).finally(() => {
-              req.url = original;
-            });
-          };
-        });
-
-      await this.runStack(req, res, mwStack);
-      if (res.writableEnded) return;
-
-      // OPTIONS: skip route lookup entirely. Arcara.handleRequest runs dispatch
-      // first so CORS middleware executes, then handles the 204 + Allow fallback
-      // itself. If the lookup ran here, paths without an explicit OPTIONS handler
-      // would 405 before handleRequest gets a chance to respond.
-      if (req.method === 'OPTIONS') return;
-
-      // 2. Route lookup — HEAD falls back to GET per HTTP spec
-      const effectiveMethod = (
-        req.method === 'HEAD' ? 'GET' : (req.method ?? 'GET')
-      ).toUpperCase() as HttpMethod;
-
-      const match = this.routeTree.lookup(pathname, effectiveMethod);
-      const methodMismatch = !match.success && match.code === 405;
-
-      if (match.success) {
-        // Merge: parent layers may have already populated params from prefix segments
-        req.params = { ...req.params, ...match.params };
-        await this.runStack(req, res, match.route.handlers);
-        if (!res.writableEnded) res.end();
-        return;
-      }
-
-      // 3. Child layer recursion
-      let childMatched = false;
-      for (const child of this.children) {
-        const prefixMatch = pathname.match(child.regex);
-        if (!prefixMatch) continue;
-
-        childMatched = true;
-
-        // Extract params from the prefix itself (e.g. /orgs/:orgId/...)
-        const prefixParams = Object.fromEntries(
-          child.paramNames.map((name, i) => [name, prefixMatch[i + 1] ?? '']),
-        );
-        req.params = { ...req.params, ...prefixParams };
-
-        // Strip matched prefix — child sees root-relative pathname
-        const stripped = pathname.slice(prefixMatch[0]!.length) || '/';
-        await child.layer.dispatch(stripped, req, res);
-        if (res.writableEnded) return;
-      }
-
-      // 4. Nothing matched — 405 if path existed with wrong method, else 404
-      throw new HttpError(
-        methodMismatch && !childMatched ? 405 : 404,
-        methodMismatch && !childMatched ? 'Method Not Allowed' : 'Not Found',
-      );
+      await this.dispatchInner(pathname, req, res);
     } catch (e) {
       this.handleError(e, req, res);
     }
+  }
+
+  /**
+   * Internal dispatch logic. Throws HttpError on 404/405 rather than writing
+   * the response directly — this allows parent layers to try sibling routers
+   * before committing to an error response.
+   *
+   * Only the outermost `dispatch()` call (via its try/catch) writes the error.
+   * Child layers called via `tryDispatch()` let the error propagate so the
+   * parent can continue iterating siblings.
+   */
+  private async dispatchInner(
+    pathname: string,
+    req: ArcaraRequest,
+    res: ArcaraResponse,
+  ): Promise<void> {
+    // 1. Prefix-matching middlewares
+    const mwStack = this.middlewares
+      .filter((mw) => this.matchesPrefix(pathname, mw.prefix))
+      .map((mw): Middleware => {
+        if (mw.prefix === '/') return mw.handler;
+
+        return async (req, res, next) => {
+          const original = req.url ?? '/';
+          req.url = original.slice(mw.prefix.length) || '/';
+          return Promise.resolve(mw.handler(req, res, next)).finally(() => {
+            req.url = original;
+          });
+        };
+      });
+
+    await this.runStack(req, res, mwStack);
+    if (res.writableEnded) return;
+
+    // OPTIONS: skip route lookup entirely. Arcara.handleRequest runs dispatch
+    // first so CORS middleware executes, then handles the 204 + Allow fallback
+    // itself. If the lookup ran here, paths without an explicit OPTIONS handler
+    // would 405 before handleRequest gets a chance to respond.
+    if (req.method === 'OPTIONS') return;
+
+    // 2. Route lookup — HEAD falls back to GET per HTTP spec
+    const effectiveMethod = (
+      req.method === 'HEAD' ? 'GET' : (req.method ?? 'GET')
+    ).toUpperCase() as HttpMethod;
+
+    const match = this.routeTree.lookup(pathname, effectiveMethod);
+    const methodMismatch = !match.success && match.code === 405;
+
+    if (match.success) {
+      // Merge: parent layers may have already populated params from prefix segments
+      req.params = { ...req.params, ...match.params };
+      await this.runStack(req, res, match.route.handlers);
+      if (!res.writableEnded) res.end();
+      return;
+    }
+
+    // 3. Child layer recursion — try each matching child in registration order.
+    //    A child that finds no matching route throws HttpError(404/405); we catch
+    //    that and continue to the next sibling. Only a child that actually handles
+    //    the request (res.writableEnded) or throws a non-routing error stops
+    //    the loop. This prevents the first matching-prefix child from shadowing
+    //    later siblings when it cannot handle the request itself.
+    let lastChildError: HttpError | undefined;
+
+    for (const child of this.children) {
+      const prefixMatch = pathname.match(child.regex);
+      if (!prefixMatch) continue;
+
+      // Snapshot params so a failed child branch doesn't pollute the next sibling.
+      const savedParams = { ...req.params };
+
+      const prefixParams = Object.fromEntries(
+        child.paramNames.map((name, i) => [name, prefixMatch[i + 1] ?? '']),
+      );
+      req.params = { ...req.params, ...prefixParams };
+
+      const stripped = pathname.slice(prefixMatch[0]!.length) || '/';
+
+      try {
+        // Call dispatchInner on the child directly so routing errors (404/405)
+        // propagate as thrown HttpErrors rather than being written to `res`.
+        // This lets us try the next sibling instead of committing to an error.
+        await child.layer.tryDispatch(stripped, req, res);
+        if (res.writableEnded) return;
+      } catch (e) {
+        const err = HttpError.from(e);
+        // Routing misses from the child (404/405) are expected — save and continue.
+        // Any other error (5xx thrown by a handler) is a real failure; stop here
+        // so the parent's error handler deals with it, not the next sibling.
+        if (err.status === 404 || err.status === 405) {
+          lastChildError = err;
+          req.params = savedParams; // restore before trying next sibling
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    // 4. Nothing matched — prefer 405 over 404 if any layer saw the path.
+    //    Child 405 takes priority over own-tree 404 since the path was recognized.
+    if (lastChildError?.status === 405 || methodMismatch) {
+      throw new HttpError(405, 'Method Not Allowed');
+    }
+    throw new HttpError(404, 'Not Found');
+  }
+
+  /**
+   * Variant of dispatch used when this layer is called as a child.
+   * Propagates HttpError instead of catching it — lets the parent layer
+   * decide whether to try the next sibling or commit to an error response.
+   */
+  public async tryDispatch(
+    pathname: string,
+    req: ArcaraRequest,
+    res: ArcaraResponse,
+  ): Promise<void> {
+    await this.dispatchInner(pathname, req, res);
   }
 
   /**

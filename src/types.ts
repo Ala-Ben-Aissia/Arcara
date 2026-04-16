@@ -110,7 +110,7 @@ export type Redirect = {
    * Safe against open redirect via manipulated Referer headers.
    *
    * @example
-   * res.redirect.back(req, '/home')
+   * res.redirect.back(req, res, '/home')
    */
   back(req: IncomingMessage, res: ServerResponse, fallback: string): void;
 };
@@ -343,6 +343,12 @@ export type ArcaraResponse = ServerResponse;
  * Advances the middleware chain to the next handler.
  * Pass an error to short-circuit directly to the error handler.
  *
+ * Contract:
+ * - Call `next()` at most once.
+ * - Call it before the middleware returns, or after awaiting your own async work.
+ * - Deferred callback-style continuation (timers, event listeners, streams) is
+ *   not supported once the middleware frame has already returned.
+ *
  * @example
  * next()                              // continue
  * next(new HttpError(401, 'No auth')) // jump to onError
@@ -358,6 +364,13 @@ export type NextFn = (err?: unknown) => void | Promise<void>;
  *   next()
  * }
  * app.use(logger)
+ *
+ * @example
+ * // Supported: await your async work, then call next()
+ * const auth: Middleware = async (req, _res, next) => {
+ *   req.user = await verify(req.headers.authorization)
+ *   next()
+ * }
  */
 export type Middleware<
   Params extends string = never,
@@ -439,6 +452,17 @@ export interface StoredChild {
  */
 export interface Dispatchable {
   dispatch(
+    pathname: string,
+    req: ArcaraRequest,
+    res: ArcaraResponse,
+  ): Promise<void>;
+  /**
+   * Like `dispatch`, but propagates HttpError(404/405) instead of catching
+   * them. Used by parent layers iterating over child routers so a routing
+   * miss in one child doesn't write a response that prevents siblings from
+   * being tried.
+   */
+  tryDispatch(
     pathname: string,
     req: ArcaraRequest,
     res: ArcaraResponse,

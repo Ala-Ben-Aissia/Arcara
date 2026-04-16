@@ -33,13 +33,11 @@ Radix-tree routing. Compile-time param inference. Minimal, composable middleware
 npm install arcara
 ```
 
-TypeScript users — install Node.js type definitions matching your Node version:
+Arcara requires `@types/node` for TypeScript support and declares it as a peer dependency.
+Many package managers will install it automatically, but if your setup does not, add it explicitly:
 
 ```bash
 npm install -D @types/node
-# Node 18 → @types/node@18
-# Node 20 → @types/node@20
-# Node 22 → @types/node@22
 ```
 
 ---
@@ -133,6 +131,13 @@ app.use('/api', (req, res, next) => {
 });
 ```
 
+Middleware contract:
+
+- Call `next()` exactly once.
+- Either call `next()` synchronously, or `await` your async work first and then call `next()`.
+- Callback-style deferred continuation like `setTimeout(next, 0)` or event-listener-based `next()` is not supported.
+- If a middleware does not call `next()`, Arcara treats it as terminal and stops the chain.
+
 > Prefixes are stripped from `req.url` before handlers run.  
 > A middleware mounted at `/api` receives `/users`, not `/api/users`.
 
@@ -225,7 +230,7 @@ res.redirect(301, '/new-location'); // permanent
 res.redirect(303, '/success'); // post-redirect-get
 
 // Redirects to Referer if same-origin, otherwise to the fallback
-res.redirect.back(req, '/home');
+res.redirect.back(req, res, '/home');
 ```
 
 Redirect targets must be absolute paths (`/path`). External URLs are rejected
@@ -256,6 +261,11 @@ app.use(async (req, res, next) => {
   }
 });
 ```
+
+This is supported because the middleware's own Promise does not resolve until
+after `await verifyToken(...)` completes. What is not supported is calling
+`next()` later from an unrelated callback after the middleware has already
+returned.
 
 Attach structured details for validation errors:
 

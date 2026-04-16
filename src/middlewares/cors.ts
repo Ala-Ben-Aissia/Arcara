@@ -35,6 +35,17 @@ export function cors(options: CorsOptions = {}): Middleware {
     maxAge,
   } = options;
 
+  // Fail fast: credentials:true with a wildcard origin is rejected by browsers
+  // per the Fetch spec — Access-Control-Allow-Credentials cannot be "true" when
+  // Access-Control-Allow-Origin is "*". Catching this at setup time prevents a
+  // silent misconfiguration that only surfaces as a browser CORS error at runtime.
+  if (credentials && (origin === '*' || origin == null)) {
+    throw new Error(
+      'Invalid configuration: credentials:true requires an explicit origin, not "*". ' +
+        'Set origin to a specific URL, array, or predicate function.',
+    );
+  }
+
   return (req, res, next) => {
     const requestOrigin = req.headers.origin ?? '';
     const resolvedOrigin = resolveOrigin(origin, requestOrigin);
@@ -54,6 +65,11 @@ export function cors(options: CorsOptions = {}): Middleware {
     if (maxAge !== undefined) {
       res.setHeader('Access-Control-Max-Age', String(maxAge));
     }
+
+    // Vary: Origin must be set whenever the response differs by origin —
+    // i.e. any non-wildcard config, and always when credentials are used.
+    // Without this, a shared cache can serve the wrong ACAO header to a
+    // different origin, breaking CORS for subsequent requestors.
     if (resolvedOrigin !== '*') {
       res.setHeader('Vary', 'Origin');
     }

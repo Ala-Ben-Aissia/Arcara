@@ -74,10 +74,8 @@ export function cors(options: CorsOptions = {}): Middleware {
       res.setHeader('Vary', 'Origin');
     }
 
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204).end();
-      return;
-    }
+    // OPTIONS termination and Allow header is handled by Arcara.handleRequest
+    if (req.method === 'OPTIONS') return;
 
     next();
   };

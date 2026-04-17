@@ -368,7 +368,7 @@ export class Arcara extends Layer {
   // ── Server ────────────────────────────────────────────────────────────────
 
   /**
-   * Starts listening on the given port, binding to all interfaces (`0.0.0.0`).
+   * Starts listening on the given port, "binding to loopback (`localhost`)"
    *
    * @example
    * app.listen(3000);

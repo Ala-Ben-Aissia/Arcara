@@ -1,6 +1,14 @@
 import type { IncomingMessage } from 'node:http';
 import { type Middleware, HttpError } from '../types.js';
 
+/**
+ * @remarks
+ * The store is in-memory and process-local. In a clustered deployment
+ * (Node.js `cluster`, multiple workers), each worker maintains an independent
+ * store — the effective limit becomes `limit × workerCount`.
+ * Use a shared external store (Redis, etc.) for distributed rate limiting.
+ */
+
 export interface RateLimitOptions {
   /**
    * Time window in milliseconds. Default: 60_000 (1 minute).

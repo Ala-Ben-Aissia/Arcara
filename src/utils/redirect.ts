@@ -18,8 +18,12 @@ export function applyRedirect(
 ) {
   const [status, target] =
     typeof statusOrTarget === 'number'
-      ? [statusOrTarget, maybeTarget!]
+      ? [statusOrTarget, maybeTarget]
       : [302, statusOrTarget];
+
+  if (typeof target !== 'string') {
+    throw new Error('redirect() called with a status code but no target path.');
+  }
   if (!VALID_STATUS.has(status as RedirectStatus)) {
     res.statusCode = 400;
     res.setHeader('content-type', 'application/json; charset=utf-8');

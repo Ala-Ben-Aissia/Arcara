@@ -431,6 +431,15 @@ declare module 'node:http' {
 
 ---
 
+## Known Limitations
+
+- **Global prototype augmentation** — Arcara extends `ServerResponse.prototype`
+  once at import time (`res.json`, `res.send`, `res.status`, `res.redirect`).
+  This affects all HTTP servers in the same process. Avoid running Arcara
+  alongside other frameworks that augment the same methods in a shared process.
+
+---
+
 ## Contributing
 
 1. Open an issue for bugs or feature requests

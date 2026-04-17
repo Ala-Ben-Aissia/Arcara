@@ -356,7 +356,7 @@ export abstract class Layer implements Dispatchable {
    *   Storing the error and re-throwing after `await handler(...)` guarantees
    *   it always reaches `dispatch`'s catch block.
    *
-   * Double-next detection: `poisoned` flag ensures the error path is entered
+   * Double-next detection: `callCount` per slot ensures the error path is entered
    * exactly once even if the outer async frame continues after the second call.
    */
   protected async runStack(

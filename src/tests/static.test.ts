@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { Arcara } from '../index.js';
-import { serveStatic } from '../utils/static.js';
+import { serveStatic } from '../middlewares/static.js';
 
 interface TestServer {
   app: Arcara;

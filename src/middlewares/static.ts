@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Middleware } from '../types.js';
-import { detectContentType } from './content.js';
+import { detectContentType } from '../utils/content.js';
 
 /**
  * Cache policy for static assets.

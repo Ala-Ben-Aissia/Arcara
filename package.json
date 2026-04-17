@@ -11,8 +11,8 @@
       "default": "./dist/index.js"
     },
     "./static": {
-      "types": "./dist/utils/static.d.ts",
-      "default": "./dist/utils/static.js"
+      "types": "./dist/middlewares/static.d.ts",
+      "default": "./dist/middlewares/static.js"
     },
     "./cors": {
       "types": "./dist/middlewares/cors.d.ts",

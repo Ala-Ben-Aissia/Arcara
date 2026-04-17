@@ -4,7 +4,7 @@ export default defineConfig({
   entry: [
     'src/index.ts',
     'src/middlewares/cors.ts',
-    'src/utils/static.ts',
+    'src/middlewares/static.ts',
     'src/middlewares/cookies.ts',
     'src/middlewares/logger.ts',
     'src/middlewares/rateLimit.ts',
@@ -16,6 +16,11 @@ export default defineConfig({
   treeshake: true,
   target: 'node18',
   platform: 'node',
+  esbuildOptions(options) {
+    // Keep output wrapped so uncaught exceptions don't print one giant line snippet,
+    // while preserving full minification.
+    options.lineLimit = 120;
+  },
   external: [
     'node:http',
     'node:stream',

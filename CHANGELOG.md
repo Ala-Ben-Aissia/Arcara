@@ -7,6 +7,10 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-04-16
+
+- Fixed multiple middlewares support logic
+
 ## [0.4.3] - 2026-04-16
 
 - Fixed router dispatch so sibling mounted routers can still match after another child router returns 404 or 405.

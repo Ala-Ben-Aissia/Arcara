@@ -11,6 +11,7 @@ export default defineConfig({
   ],
   format: ['esm'],
   clean: true,
+  minify: false,
   sourcemap: false,
   splitting: false,
   treeshake: true,

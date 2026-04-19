@@ -128,9 +128,27 @@ app.use((req, res, next) => {
   next();
 });
 
+// Variadic global — multiple handlers registered in order
+app.use(
+  (req, _res, next) => {
+    req.startedAt = Date.now();
+    next();
+  },
+  (req, _res, next) => {
+    req.requestId = crypto.randomUUID();
+    next();
+  },
+);
+
 // Prefix-scoped — runs only when the path starts with /api
 app.use('/api', (req, res, next) => {
   if (!req.headers.authorization) throw new HttpError(401, 'Unauthorized');
+  next();
+});
+
+// Prefix-scoped variadic — multiple handlers chained under the same prefix
+app.use('/api', authenticate, authorize, (req, _res, next) => {
+  req.tenant = resolveTenant(req);
   next();
 });
 ```
@@ -428,15 +446,6 @@ declare module 'node:http' {
 
 - Node.js 18+
 - TypeScript 5.0+ (recommended)
-
----
-
-## Known Limitations
-
-- **Global prototype augmentation** — Arcara extends `ServerResponse.prototype`
-  once at import time (`res.json`, `res.send`, `res.status`, `res.redirect`).
-  This affects all HTTP servers in the same process. Avoid running Arcara
-  alongside other frameworks that augment the same methods in a shared process.
 
 ---
 

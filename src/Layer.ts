@@ -55,18 +55,18 @@ export abstract class Layer implements Dispatchable {
    * Runs for every request in registration order.
    *
    * @example
-   * app.use(corsMiddleware());
+   * app.use(corsMiddleware(), logger());
    */
-  use(handler: Middleware): this;
+  use(...handler: Middleware[]): this;
 
   /**
    * Registers a middleware scoped to a path prefix.
    * Runs for any request whose pathname starts with `prefix`.
    *
    * @example
-   * app.use('/api', authMiddleware);
+   * app.use('/api', mw1, mw2);
    */
-  use(prefix: string, handler: Middleware): this;
+  use(prefix: string, ...handler: Middleware[]): this;
 
   /**
    * Mounts a child `Layer` (sub-router) at a path prefix.
@@ -81,24 +81,43 @@ export abstract class Layer implements Dispatchable {
 
   use(
     prefixOrHandler: string | Middleware,
-    handler?: Middleware | Layer,
+    ...rest: (Middleware | Layer)[]
   ): this {
     if (typeof prefixOrHandler === 'function') {
-      this.middlewares.push({ prefix: '/', handler: prefixOrHandler });
+      // No prefix — register all handlers globally
+      for (const handler of [prefixOrHandler, ...rest]) {
+        if (typeof handler !== 'function')
+          throw new TypeError('Expected middleware function');
+        this.middlewares.push({ prefix: '/', handler });
+      }
       return this;
     }
 
     const prefix = this.normalizePrefix(prefixOrHandler);
 
-    if (handler === undefined) {
-      throw new TypeError('use() requires a handler when a prefix is provided');
+    if (rest.length === 0) {
+      throw new TypeError(
+        'use() requires at least one handler when a prefix is provided',
+      );
     }
 
-    if (handler instanceof Layer) {
+    // Sub-router mount — only valid when exactly one Layer is passed
+    if (rest.length === 1 && rest[0] instanceof Layer) {
       const { regex, paramNames } = compilePath(prefix, true);
-      this.children.push({ prefix, regex, paramNames, layer: handler });
-    } else {
-      this.middlewares.push({ prefix, handler });
+      this.children.push({ prefix, regex, paramNames, layer: rest[0] });
+      return this;
+    }
+
+    // Multiple middleware — register each in order
+    for (const h of rest) {
+      if (typeof h !== 'function')
+        throw new TypeError('Expected middleware function');
+      if (h instanceof Layer) {
+        throw new TypeError(
+          'Cannot mix Layer and Middleware handlers in a single use() call',
+        );
+      }
+      this.middlewares.push({ prefix, handler: h as Middleware });
     }
 
     return this;

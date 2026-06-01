@@ -6,10 +6,8 @@ import { HttpError } from '../types.js';
 import type { ArcaraRequest, ArcaraResponse, NextFn } from '../types.js';
 
 // ── Concrete Layer subclass for testing ───────────────────────────────────────
-// Layer is abstract — we need a concrete subclass to instantiate it.
 
 class TestLayer extends Layer {
-  // Expose dispatch publicly for direct testing
   public run(
     pathname: string,
     req: ArcaraRequest,
@@ -139,6 +137,44 @@ describe('Layer — routing', () => {
     await layer.run('/ping', mockReq('HEAD', '/ping'), mockRes());
     assert.equal(called, true);
   });
+
+  it('matches multiple HTTP methods on the same path independently', async () => {
+    const layer = new TestLayer();
+    const seen: string[] = [];
+
+    layer.get('/resource', (_req, res) => {
+      seen.push('GET');
+      res.end();
+    });
+    layer.post('/resource', (_req, res) => {
+      seen.push('POST');
+      res.end();
+    });
+    layer.delete('/resource', (_req, res) => {
+      seen.push('DELETE');
+      res.end();
+    });
+
+    await layer.run('/resource', mockReq('GET'), mockRes());
+    await layer.run('/resource', mockReq('POST'), mockRes());
+    await layer.run('/resource', mockReq('DELETE'), mockRes());
+
+    assert.deepEqual(seen, ['GET', 'POST', 'DELETE']);
+  });
+
+  it('OPTIONS short-circuits without calling route handlers', async () => {
+    const layer = new TestLayer();
+    let handlerCalled = false;
+
+    layer.get('/resource', (_req, res) => {
+      handlerCalled = true;
+      res.end();
+    });
+
+    // OPTIONS should return without reaching the GET handler
+    await layer.run('/resource', mockReq('OPTIONS'), mockRes());
+    assert.equal(handlerCalled, false);
+  });
 });
 
 describe('Layer — middleware', () => {
@@ -178,13 +214,41 @@ describe('Layer — middleware', () => {
     assert.deepEqual(ran, []);
   });
 
+  it('prefix-scoped middleware strips the prefix from req.url', async () => {
+    const layer = new TestLayer();
+    let seenUrl = '';
+
+    layer.use('/api', (req, _res, next) => {
+      seenUrl = req.url ?? '';
+      next();
+    });
+    layer.get('/api/users', (_req, res) => res.end());
+
+    await layer.run('/api/users', mockReq('GET', '/api/users'), mockRes());
+    assert.equal(seenUrl, '/users');
+  });
+
+  it('restores req.url after prefix-scoped middleware completes', async () => {
+    const layer = new TestLayer();
+
+    layer.use('/api', (_req, _res, next) => next());
+    layer.get('/api/users', (_req, res) => {
+      res.end();
+    });
+
+    const req = mockReq('GET', '/api/users');
+    await layer.run('/api/users', req, mockRes());
+    // After dispatch, req.url should be restored to the original
+    assert.equal(req.url, '/api/users');
+  });
+
   it('short-circuits when middleware ends the response', async () => {
     const layer = new TestLayer();
     let handlerCalled = false;
 
     layer.use((_req, res, _next) => {
       res.end();
-    }); // does not call next
+    });
     layer.get('/path', (_req, res) => {
       handlerCalled = true;
       res.end();
@@ -216,6 +280,61 @@ describe('Layer — middleware', () => {
 
     await layer.run('/path', mockReq('GET', '/path'), mockRes());
     assert.deepEqual(order, [1, 2, 3]);
+  });
+
+  it('supports async middleware that awaits before calling next', async () => {
+    const layer = new TestLayer();
+    const order: string[] = [];
+
+    layer.use(async (_req, _res, next) => {
+      await Promise.resolve(); // simulate async work
+      order.push('async-mw');
+      next();
+    });
+    layer.get('/path', (_req, res) => {
+      order.push('handler');
+      res.end();
+    });
+
+    await layer.run('/path', mockReq('GET', '/path'), mockRes());
+    assert.deepEqual(order, ['async-mw', 'handler']);
+  });
+
+  it('multiple global middlewares all run in registration order', async () => {
+    const layer = new TestLayer();
+    const order: number[] = [];
+
+    layer.use((_req, _res, next) => {
+      order.push(1);
+      next();
+    });
+    layer.use((_req, _res, next) => {
+      order.push(2);
+      next();
+    });
+    layer.use((_req, _res, next) => {
+      order.push(3);
+      next();
+    });
+    layer.get('/path', (_req, res) => res.end());
+
+    await layer.run('/path', mockReq('GET', '/path'), mockRes());
+    assert.deepEqual(order, [1, 2, 3]);
+  });
+
+  it('prefix middleware does not run for a path that is just the prefix with no trailing segment', async () => {
+    // /api should NOT match /apiusers — only /api or /api/*
+    const layer = new TestLayer();
+    const ran: string[] = [];
+
+    layer.use('/api', (_req, _res, next) => {
+      ran.push('ran');
+      next();
+    });
+    layer.get('/apiusers', (_req, res) => res.end());
+
+    await layer.run('/apiusers', mockReq('GET', '/apiusers'), mockRes());
+    assert.deepEqual(ran, []);
   });
 });
 
@@ -270,13 +389,31 @@ describe('Layer — error handling', () => {
     assert.equal(res.statusCode, 403);
   });
 
+  it('normalizes a plain Error passed to next(err) to 500', async () => {
+    const layer = new TestLayer();
+    const res = mockRes();
+
+    layer.use((_req, _res, next) => {
+      next(new Error('plain error'));
+    });
+    layer.get('/path', (_req, r) => r.end());
+    layer.onError((err, _req, r) => {
+      r.statusCode = err.status;
+      r.end(err.message);
+    });
+
+    await layer.run('/path', mockReq('GET', '/path'), res);
+    assert.equal(res.statusCode, 500);
+    assert.equal(res._body, 'plain error');
+  });
+
   it('detects double next() and reports 500', async () => {
     const layer = new TestLayer();
     const res = mockRes();
 
     layer.get('/double', (_req, _res, next: NextFn) => {
       next();
-      next(); // second call — should be detected
+      next();
     });
     layer.onError((err, _req, r) => {
       r.statusCode = err.status;
@@ -286,6 +423,35 @@ describe('Layer — error handling', () => {
     await layer.run('/double', mockReq('GET', '/double'), res);
     assert.equal(res.statusCode, 500);
   });
+
+  // it('scoped onError does not bleed into parent layer', async () => {
+  //   const parent = new TestLayer();
+  //   const child = new TestLayer();
+  //   const parentErrors: number[] = [];
+  //   const childErrors: number[] = [];
+
+  //   child.get('/boom', () => {
+  //     throw new HttpError(422, 'child error');
+  //   });
+  //   child.onError((err, _req, r) => {
+  //     childErrors.push(err.status);
+  //     r.statusCode = err.status;
+  //     r.end();
+  //   });
+
+  //   parent.use('/api', child);
+  //   parent.onError((err, _req, r) => {
+  //     parentErrors.push(err.status);
+  //     r.statusCode = err.status;
+  //     r.end();
+  //   });
+
+  //   await parent.run('/api/boom', mockReq('GET', '/api/boom'), mockRes());
+
+  //   // Child error handler caught it — parent should not have fired
+  //   assert.deepEqual(childErrors, [422]);
+  //   assert.deepEqual(parentErrors, []);
+  // });
 });
 
 describe('Layer — child layer mounting', () => {
@@ -311,16 +477,16 @@ describe('Layer — child layer mounting', () => {
   it('strips the prefix before dispatching to the child', async () => {
     const parent = new TestLayer();
     const child = new TestLayer();
-    let seenPath = '';
+    let seenId = '';
 
     child.get('/:id', (req, res) => {
-      seenPath = (req.params as Record<string, string>)['id'] ?? '';
+      seenId = (req.params as Record<string, string>)['id'] ?? '';
       res.end();
     });
     parent.use('/items', child);
 
     await parent.run('/items/99', mockReq('GET', '/items/99'), mockRes());
-    assert.equal(seenPath, '99');
+    assert.equal(seenId, '99');
   });
 
   it('returns 404 if child does not match', async () => {
@@ -337,6 +503,59 @@ describe('Layer — child layer mounting', () => {
 
     await parent.run('/api/b', mockReq('GET', '/api/b'), res);
     assert.equal(res.statusCode, 404);
+  });
+
+  it('bubbles 405 from child to parent error handler', async () => {
+    const parent = new TestLayer();
+    const child = new TestLayer();
+    const res = mockRes();
+
+    child.get('/resource', (_req, r) => r.end()); // only GET registered
+    parent.use('/api', child);
+    parent.onError((err, _req, r) => {
+      r.statusCode = err.status;
+      r.end();
+    });
+
+    await parent.run('/api/resource', mockReq('POST', '/api/resource'), res);
+    assert.equal(res.statusCode, 405);
+  });
+
+  it('supports three levels of nesting', async () => {
+    const app = new TestLayer();
+    const api = new TestLayer();
+    const users = new TestLayer();
+    let capturedId = '';
+
+    users.get('/:id', (req, res) => {
+      capturedId = (req.params as Record<string, string>)['id'] ?? '';
+      res.end();
+    });
+    api.use('/users', users);
+    app.use('/api/v1', api);
+
+    await app.run(
+      '/api/v1/users/42',
+      mockReq('GET', '/api/v1/users/42'),
+      mockRes(),
+    );
+    assert.equal(capturedId, '42');
+  });
+
+  it('does not dispatch to child if prefix does not match', async () => {
+    const parent = new TestLayer();
+    const child = new TestLayer();
+    let childCalled = false;
+
+    child.get('/x', (_req, res) => {
+      childCalled = true;
+      res.end();
+    });
+    parent.use('/api', child);
+    parent.get('/other/x', (_req, res) => res.end());
+
+    await parent.run('/other/x', mockReq('GET', '/other/x'), mockRes());
+    assert.equal(childCalled, false);
   });
 });
 
@@ -356,9 +575,19 @@ describe('Layer — collectAllowedMethods', () => {
     const child = new TestLayer();
 
     child.get('/profile', (_req, res) => res.end());
+    child.patch('/profile', (_req, res) => res.end());
     parent.use('/users', child);
 
     const allowed = parent.collectAllowedMethods('/users/profile');
     assert.ok(allowed.has('GET'));
+    assert.ok(allowed.has('PATCH'));
+  });
+
+  it('returns empty set for a path that does not exist anywhere', () => {
+    const layer = new TestLayer();
+    layer.get('/users', (_req, res) => res.end());
+
+    const allowed = layer.collectAllowedMethods('/posts');
+    assert.equal(allowed.size, 0);
   });
 });

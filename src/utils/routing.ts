@@ -84,6 +84,16 @@ function createNode(): RadixNode {
   };
 }
 
+// ── Isolated try/catch — keeps the hot path JIT-optimizable ──────────────────
+
+function safeDecode(val: string): string {
+  try {
+    return decodeURIComponent(val);
+  } catch {
+    return val;
+  }
+}
+
 // ── RadixTree ─────────────────────────────────────────────────────────────────
 
 /**
@@ -106,19 +116,16 @@ function createNode(): RadixNode {
 export class RadixTree {
   private root: RadixNode = createNode();
 
-  // ── Insert ──────────────────────────────────────────────────────────────────
-
   /**
    * Inserts a route into the tree.
    * Throws if the same method+pattern is registered twice.
    */
   insert(route: Route): void {
-    const segments = this.splitPath(route.pattern);
+    const segments = route.pattern.split('/').filter(Boolean);
     let node = this.root;
 
     for (const segment of segments) {
       if (segment.startsWith(':')) {
-        // Param segment
         const name = segment.slice(1);
         if (!node.paramChild) {
           node.paramChild = createNode();
@@ -126,13 +133,9 @@ export class RadixTree {
         }
         node = node.paramChild;
       } else if (segment === '*') {
-        // Wildcard segment
-        if (!node.wildcardChild) {
-          node.wildcardChild = createNode();
-        }
+        if (!node.wildcardChild) node.wildcardChild = createNode();
         node = node.wildcardChild;
       } else {
-        // Static segment
         if (!node.children.has(segment)) {
           node.children.set(segment, createNode());
         }
@@ -149,8 +152,6 @@ export class RadixTree {
     node.routes.set(route.method, route);
   }
 
-  // ── Lookup ──────────────────────────────────────────────────────────────────
-
   /**
    * Looks up a route for the given pathname and method.
    *
@@ -158,22 +159,24 @@ export class RadixTree {
    * 404 (path not found) or 405 (method not allowed) code.
    */
   lookup(pathname: string, method: HttpMethod): LookupResult {
-    const segments = this.splitPath(pathname);
+    // Inline segment scanning — zero array allocation
+    const paramKeys: string[] = [];
+    const paramVals: string[] = [];
+
+    const node = this.traverse(pathname, paramKeys, paramVals);
+    if (!node) return { success: false, code: 404 };
+
+    const route = node.routes.get(method);
+    if (!route) return { success: false, code: 405 };
+
+    // Build params object — decode only on confirmed hit
     const params: Record<string, string> = {};
-
-    const hit = this.traverse(this.root, segments, 0, params);
-
-    if (!hit) return { success: false, code: 404 };
-
-    const route = hit.routes.get(method);
-    if (!route) {
-      return { success: false, code: 405 };
+    for (let i = 0; i < paramKeys.length; i++) {
+      params[paramKeys[i]!] = safeDecode(paramVals[i]!);
     }
 
     return { success: true, params, route };
   }
-
-  // ── collectAllowedMethods ───────────────────────────────────────────────────
 
   /**
    * Returns all HTTP methods registered for `pathname`.
@@ -181,73 +184,177 @@ export class RadixTree {
    * Returns an empty set if the path is not registered at all.
    */
   collectAllowedMethods(pathname: string): Set<HttpMethod> {
-    const segments = this.splitPath(pathname);
-    const node = this.traverse(this.root, segments, 0, {});
-
+    const node = this.traverse(pathname, [], []);
     if (!node) return new Set();
     return new Set(node.routes.keys());
   }
 
-  // ── Private helpers ─────────────────────────────────────────────────────────
-
   /**
-   * Recursive depth-first traversal with static-first priority.
-   * Returns the matching node (with its routes map) or null.
+   * Iterative traversal — eliminates recursive call frames.
+   * Scans pathname char-by-char to extract segments without allocating
+   * an intermediate array.
+   *
+   * Backtracking for param vs static is handled via an explicit stack
+   * of (node, segmentStart, paramCount) frames — only pushed when a
+   * static child exists AND a param child also exists (ambiguous branch).
    */
   private traverse(
-    node: RadixNode,
-    segments: string[],
-    index: number,
-    params: Record<string, string>,
+    pathname: string,
+    paramKeys: string[],
+    paramVals: string[],
   ): RadixNode | null {
-    // Base case: consumed all segments → this node is the match
-    if (index === segments.length) return node;
+    type Frame = { node: RadixNode; pos: number; paramCount: number };
+    const stack: Frame[] = [];
 
-    const segment = segments[index]!;
+    let node = this.root;
+    let pos = 0;
+    const len = pathname.length;
 
-    // 1. Static match (highest priority)
-    const staticChild = node.children.get(segment);
-    if (staticChild) {
-      const result = this.traverse(staticChild, segments, index + 1, params);
-      if (result) return result;
-    }
+    // Skip leading slash
+    if (pos < len && pathname.charCodeAt(pos) === 47) pos++;
 
-    // 2. Param match
-    if (node.paramChild && node.paramName) {
-      const savedValue = params[node.paramName];
-      params[node.paramName] = decodeURIComponent(segment);
+    while (pos <= len) {
+      // Find end of current segment
+      let end = pos;
+      while (end < len && pathname.charCodeAt(end) !== 47) end++;
 
-      const result = this.traverse(
-        node.paramChild,
-        segments,
-        index + 1,
-        params,
-      );
-      if (result) return result;
+      // const isLast = end >= len;
 
-      // Backtrack — restore param state if this branch didn't match
-      if (savedValue === undefined) {
-        delete params[node.paramName];
-      } else {
-        params[node.paramName] = savedValue;
+      if (pos === end) {
+        // Trailing slash or empty — treat as done
+        break;
       }
+
+      const segment = pathname.slice(pos, end);
+
+      // 1. Try static child first (highest priority)
+      const staticChild = node.children.get(segment);
+
+      // 2. Check if param child exists for potential backtrack
+      if (staticChild && node.paramChild) {
+        // Ambiguous: push param branch as backtrack candidate
+        stack.push({ node, pos, paramCount: paramKeys.length });
+      }
+
+      if (staticChild) {
+        node = staticChild;
+      } else if (node.paramChild) {
+        paramKeys.push(node.paramName!);
+        paramVals.push(segment);
+        node = node.paramChild;
+      } else if (node.wildcardChild) {
+        paramKeys.push('*');
+        paramVals.push(pathname.slice(pos));
+        return node.wildcardChild;
+      } else {
+        // Dead end — backtrack
+        const frame = stack.pop();
+        if (!frame) return null;
+        // Restore state and take the param branch
+        node = frame.node;
+        pos = frame.pos;
+        paramKeys.length = frame.paramCount;
+        paramVals.length = frame.paramCount;
+
+        const seg = pathname.slice(
+          pos,
+          (() => {
+            let e = pos;
+            while (e < len && pathname.charCodeAt(e) !== 47) e++;
+            return e;
+          })(),
+        );
+        paramKeys.push(node.paramName!);
+        paramVals.push(seg);
+        node = node.paramChild!;
+      }
+
+      pos = end + 1; // skip the '/'
     }
 
-    // 3. Wildcard match (lowest priority) — consumes remaining segments
-    if (node.wildcardChild) {
-      params['*'] = segments.slice(index).join('/');
-      return node.wildcardChild;
+    // Confirm the node has routes (not just a structural node)
+    return node.routes.size > 0
+      ? node
+      : this.backtrackToMatch(node, stack, pathname, len, paramKeys, paramVals);
+  }
+
+  /**
+   * If the static traversal landed on a structureless node (no routes),
+   * drain the backtrack stack to find the best matching param node.
+   */
+  private backtrackToMatch(
+    node: RadixNode,
+    stack: { node: RadixNode; pos: number; paramCount: number }[],
+    pathname: string,
+    len: number,
+    paramKeys: string[],
+    paramVals: string[],
+  ): RadixNode | null {
+    if (node.routes.size > 0) return node;
+
+    while (stack.length > 0) {
+      const frame = stack.pop()!;
+      paramKeys.length = frame.paramCount;
+      paramVals.length = frame.paramCount;
+
+      // Re-extract segment at frame.pos
+      let end = frame.pos;
+      while (end < len && pathname.charCodeAt(end) !== 47) end++;
+      const segment = pathname.slice(frame.pos, end);
+
+      const candidate = frame.node.paramChild!;
+      paramKeys.push(frame.node.paramName!);
+      paramVals.push(segment);
+
+      // Continue traversal from here iteratively
+      // For simplicity delegate back — in practice most routes are shallow
+      const subResult = this.traverseFrom(
+        candidate,
+        pathname,
+        end + 1,
+        len,
+        paramKeys,
+        paramVals,
+      );
+      if (subResult) return subResult;
     }
 
     return null;
   }
 
-  /**
-   * Splits a pathname into non-empty segments.
-   * '/users/42/' → ['users', '42']
-   * '/'          → []
-   */
-  private splitPath(pathname: string): string[] {
-    return pathname.split('/').filter(Boolean);
+  private traverseFrom(
+    node: RadixNode,
+    pathname: string,
+    pos: number,
+    len: number,
+    paramKeys: string[],
+    paramVals: string[],
+  ): RadixNode | null {
+    while (pos <= len) {
+      let end = pos;
+      while (end < len && pathname.charCodeAt(end) !== 47) end++;
+      if (pos === end) break;
+
+      const segment = pathname.slice(pos, end);
+      const staticChild = node.children.get(segment);
+
+      if (staticChild) {
+        node = staticChild;
+      } else if (node.paramChild) {
+        paramKeys.push(node.paramName!);
+        paramVals.push(segment);
+        node = node.paramChild;
+      } else if (node.wildcardChild) {
+        paramKeys.push('*');
+        paramVals.push(pathname.slice(pos));
+        return node.wildcardChild;
+      } else {
+        return null;
+      }
+
+      pos = end + 1;
+    }
+
+    return node.routes.size > 0 ? node : null;
   }
 }

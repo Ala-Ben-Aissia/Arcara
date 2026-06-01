@@ -5,9 +5,6 @@ import { after, before, describe, it } from 'node:test';
 import { Arcara, HttpError } from '../index.js';
 
 // ── Test server harness ───────────────────────────────────────────────────────
-//
-// Binds to port 0 — the OS assigns a free ephemeral port.
-// No port conflicts between parallel test runs or CI matrix nodes.
 
 interface TestServer {
   app: Arcara;
@@ -18,7 +15,7 @@ interface TestServer {
 async function createTestServer(
   setup: (app: Arcara) => void,
 ): Promise<TestServer> {
-  const app = new Arcara({ timeout: 5_000 });
+  const app = new Arcara({ timeout: 5_000, startupLog: false });
   setup(app);
 
   await new Promise<void>((resolve) => {
@@ -26,7 +23,6 @@ async function createTestServer(
   });
 
   const port = (app['server'].address() as { port: number }).port;
-
   return { app, port, close: () => app.close() };
 }
 
@@ -67,15 +63,15 @@ function request(
       },
       (res) => {
         const chunks: Buffer[] = [];
-        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('data', (c) => chunks.push(c));
         res.on('end', () => {
           const body = Buffer.concat(chunks).toString('utf-8');
           resolve({
             status: res.statusCode ?? 0,
             headers: res.headers,
             body,
-            json<T>(): T {
-              return JSON.parse(body) as T;
+            json() {
+              return JSON.parse(body);
             },
           });
         });
@@ -125,6 +121,13 @@ describe('Arcara — basic routing', () => {
     const res = await request(server.port, 'DELETE', '/health');
     assert.equal(res.status, 405);
   });
+
+  it('handles HEAD request via the matching GET handler', async () => {
+    const res = await request(server.port, 'HEAD', '/health');
+    assert.equal(res.status, 200);
+    // HEAD must return no body
+    assert.equal(res.body, '');
+  });
 });
 
 describe('Arcara — response helpers', () => {
@@ -134,9 +137,13 @@ describe('Arcara — response helpers', () => {
     server = await createTestServer((app) => {
       app.get('/json', (_req, res) => res.json({ ok: true }));
       app.get('/text', (_req, res) => res.send('hello'));
+      app.get('/html', (_req, res) => res.send('<h1>hi</h1>'));
+      app.get('/buffer', (_req, res) => res.send(Buffer.from('bytes')));
+      app.get('/object', (_req, res) => res.send({ key: 'value' }));
       app.get('/status', (_req, res) =>
         res.status(201).json({ created: true }),
       );
+      app.get('/no-content', (_req, res) => res.status(204));
     });
   });
 
@@ -156,10 +163,35 @@ describe('Arcara — response helpers', () => {
     assert.equal(res.body, 'hello');
   });
 
+  it('res.send() detects text/html for HTML string', async () => {
+    const res = await request(server.port, 'GET', '/html');
+    assert.equal(res.status, 200);
+    assert.match(res.headers['content-type'] ?? '', /text\/html/);
+  });
+
+  it('res.send() handles Buffer body', async () => {
+    const res = await request(server.port, 'GET', '/buffer');
+    assert.equal(res.status, 200);
+    assert.equal(res.body, 'bytes');
+  });
+
+  it('res.send() serializes a plain object as JSON', async () => {
+    const res = await request(server.port, 'GET', '/object');
+    assert.equal(res.status, 200);
+    assert.match(res.headers['content-type'] ?? '', /application\/json/);
+    assert.deepEqual(res.json(), { key: 'value' });
+  });
+
   it('res.status() sets the correct status code', async () => {
     const res = await request(server.port, 'GET', '/status');
     assert.equal(res.status, 201);
     assert.deepEqual(res.json(), { created: true });
+  });
+
+  it('res.status(204) ends the response with no body', async () => {
+    const res = await request(server.port, 'GET', '/no-content');
+    assert.equal(res.status, 204);
+    assert.equal(res.body, '');
   });
 });
 
@@ -169,6 +201,8 @@ describe('Arcara — body parsing', () => {
   before(async () => {
     server = await createTestServer((app) => {
       app.post('/echo', (req, res) => res.json(req.body));
+      app.put('/echo', (req, res) => res.json(req.body));
+      app.patch('/echo', (req, res) => res.json(req.body));
     });
   });
 
@@ -182,8 +216,24 @@ describe('Arcara — body parsing', () => {
     assert.deepEqual(res.json(), { name: 'arcara' });
   });
 
+  it('parses a JSON body on PUT', async () => {
+    const res = await request(server.port, 'PUT', '/echo', {
+      body: { updated: true },
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json(), { updated: true });
+  });
+
+  it('parses a JSON body on PATCH', async () => {
+    const res = await request(server.port, 'PATCH', '/echo', {
+      body: { patched: true },
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json(), { patched: true });
+  });
+
   it('responds 413 when body exceeds the limit', async () => {
-    const app = new Arcara({ bodyLimit: 10 }); // 10 bytes
+    const app = new Arcara({ bodyLimit: 10, startupLog: false });
     app.post('/upload', (req, res) => res.json(req.body));
 
     await new Promise<void>((resolve) => app.listen(0, '127.0.0.1', resolve));
@@ -196,6 +246,48 @@ describe('Arcara — body parsing', () => {
     assert.equal(res.status, 413);
     await app.close();
   });
+
+  // it('responds 400 for malformed JSON body', async () => {
+  //   const app = new Arcara({ startupLog: false });
+  //   app.post('/parse', (req, res) => res.json(req.body));
+
+  //   await new Promise<void>((resolve) => app.listen(0, '127.0.0.1', resolve));
+  //   const port = (app['server'].address() as { port: number }).port;
+
+  //   const req = await request(port, 'POST', '/parse', {
+  //     body: undefined,
+  //   });
+
+  //   assert.equal(req.headers, {
+  //     'content-type': 'application/json',
+  //     'content-length': '9',
+  //   });
+  // Send raw malformed JSON manually
+  // await new Promise<void>((resolve, reject) => {
+  //   const raw = 'not-json';
+  //   const r = http.request(
+  //     {
+  //       hostname: '127.0.0.1',
+  //       port,
+  //       method: 'POST',
+  //       path: '/parse',
+  //       headers: {
+  //         'content-type': 'application/json',
+  //         'content-length': Buffer.byteLength(raw).toString(),
+  //       },
+  //     },
+  //     (response) => {
+  //       response.resume();
+  //       resolve();
+  //     },
+  //   );
+  //   r.on('error', reject);
+  //   r.write(raw);
+  //   r.end();
+  // });
+
+  //     await app.close();
+  //   });
 });
 
 describe('Arcara — error handling', () => {
@@ -206,11 +298,9 @@ describe('Arcara — error handling', () => {
       app.get('/throw', () => {
         throw new HttpError(422, 'Validation failed');
       });
-
       app.get('/throw-generic', () => {
         throw new Error('Something broke');
       });
-
       app.onError((err, _req, res) => {
         res.status(err.status).json({ error: err.message });
       });
@@ -238,11 +328,11 @@ describe('Arcara — middleware', () => {
   before(async () => {
     server = await createTestServer((app) => {
       app.use((req, _res, next) => {
-        req.tagged = true;
+        (req as any).tagged = true;
         next();
       });
       app.get('/check', (req, res) => {
-        res.json({ tagged: req.tagged });
+        res.json({ tagged: (req as any).tagged });
       });
     });
   });
@@ -293,16 +383,84 @@ describe('Arcara — query string', () => {
     const res = await request(server.port, 'GET', '/search?q=arcara&page=2');
     assert.deepEqual(res.json(), { q: 'arcara', page: '2' });
   });
+
+  it('returns empty object when no query string is present', async () => {
+    const res = await request(server.port, 'GET', '/search');
+    assert.deepEqual(res.json(), {});
+  });
+
+  it('handles a key with empty value', async () => {
+    const res = await request(server.port, 'GET', '/search?q=');
+    assert.deepEqual(res.json(), { q: '' });
+  });
+
+  it('handles percent-encoded query values', async () => {
+    const res = await request(server.port, 'GET', '/search?q=hello%20world');
+    assert.deepEqual(res.json(), { q: 'hello world' });
+  });
+});
+
+describe('Arcara — redirect', () => {
+  let server: TestServer;
+
+  before(async () => {
+    server = await createTestServer((app) => {
+      app.get('/old', (_req, res) => res.redirect('/new'));
+      app.get('/permanent', (_req, res) => res.redirect(301, '/new-permanent'));
+      app.get('/new', (_req, res) => res.json({ arrived: true }));
+      app.get('/new-permanent', (_req, res) => res.json({ arrived: true }));
+    });
+  });
+
+  after(async () => server.close());
+
+  it('res.redirect() issues a 302 by default', async () => {
+    // Use a raw request — don't follow the redirect
+    const res = await new Promise<{ status: number; location: string }>(
+      (resolve, reject) => {
+        const req = http.get(
+          { hostname: '127.0.0.1', port: server.port, path: '/old' },
+          (r) => {
+            r.resume();
+            resolve({
+              status: r.statusCode ?? 0,
+              location: (r.headers['location'] as string) ?? '',
+            });
+          },
+        );
+        req.on('error', reject);
+      },
+    );
+    assert.equal(res.status, 302);
+    assert.equal(res.location, '/new');
+  });
+
+  it('res.redirect(301, path) issues a 301', async () => {
+    const res = await new Promise<{ status: number; location: string }>(
+      (resolve, reject) => {
+        const req = http.get(
+          { hostname: '127.0.0.1', port: server.port, path: '/permanent' },
+          (r) => {
+            r.resume();
+            resolve({
+              status: r.statusCode ?? 0,
+              location: (r.headers['location'] as string) ?? '',
+            });
+          },
+        );
+        req.on('error', reject);
+      },
+    );
+    assert.equal(res.status, 301);
+    assert.equal(res.location, '/new-permanent');
+  });
 });
 
 describe('Arcara — graceful shutdown', () => {
   it('close() resolves after server stops accepting connections', async () => {
-    const app = new Arcara();
+    const app = new Arcara({ startupLog: false });
     app.get('/ping', (_req, res) => res.end('pong'));
-
     await new Promise<void>((resolve) => app.listen(0, '127.0.0.1', resolve));
-
-    // Should resolve cleanly — no timeout, no throw
-    await assert.doesNotReject(async () => app.close());
+    await assert.doesNotReject(() => app.close());
   });
 });

@@ -46,8 +46,25 @@ describe('compilePath', () => {
 
   it('does not match across segment boundaries for params', () => {
     const { regex } = compilePath('/users/:id');
-    // :id should not match slashes
     assert.doesNotMatch('/users/a/b', regex);
+  });
+
+  it('isPrefix=true matches the prefix exactly without trailing slash', () => {
+    // /api should match /api itself (not just /api/*)
+    const { regex } = compilePath('/api', true);
+    assert.match('/api', regex);
+  });
+
+  it('isPrefix=true does not match a prefix that is a substring of a longer segment', () => {
+    const { regex } = compilePath('/api', true);
+    assert.doesNotMatch('/apiv2', regex);
+    assert.doesNotMatch('/apiusers', regex);
+  });
+
+  it('static path does not match a subpath', () => {
+    const { regex } = compilePath('/users');
+    assert.doesNotMatch('/users/123', regex);
+    assert.doesNotMatch('/userssuffix', regex);
   });
 });
 
@@ -98,6 +115,15 @@ describe('RadixTree', () => {
       assert.equal(tree.lookup('/users', 'GET').success, true);
       assert.equal(tree.lookup('/users', 'POST').success, true);
     });
+
+    it('matches deeply nested static path', () => {
+      const tree = new RadixTree();
+      tree.insert(makeRoute('GET', '/api/v1/users/profile'));
+
+      assert.equal(tree.lookup('/api/v1/users/profile', 'GET').success, true);
+      assert.equal(tree.lookup('/api/v1/users', 'GET').success, false);
+      assert.equal(tree.lookup('/api/v1', 'GET').success, false);
+    });
   });
 
   describe('lookup: param routes', () => {
@@ -121,6 +147,23 @@ describe('RadixTree', () => {
       }
     });
 
+    it('extracts three params (deep nested)', () => {
+      const tree = new RadixTree();
+      tree.insert(
+        makeRoute('GET', '/orgs/:orgId/repos/:repoId/issues/:issueId'),
+      );
+
+      const result = tree.lookup('/orgs/acme/repos/backend/issues/99', 'GET');
+      assert.equal(result.success, true);
+      if (result.success) {
+        assert.deepEqual(result.params, {
+          orgId: 'acme',
+          repoId: 'backend',
+          issueId: '99',
+        });
+      }
+    });
+
     it('decodes percent-encoded param values', () => {
       const tree = new RadixTree();
       tree.insert(makeRoute('GET', '/search/:query'));
@@ -130,12 +173,36 @@ describe('RadixTree', () => {
       if (result.success) assert.equal(result.params.query, 'hello world');
     });
 
+    it('leaves malformed percent-encoding raw rather than throwing', () => {
+      const tree = new RadixTree();
+      tree.insert(makeRoute('GET', '/items/:id'));
+
+      const result = tree.lookup('/items/bad%ZZvalue', 'GET');
+      assert.equal(result.success, true);
+      if (result.success) assert.equal(result.params.id, 'bad%ZZvalue');
+    });
+
     it('does not match when segment count differs', () => {
       const tree = new RadixTree();
       tree.insert(makeRoute('GET', '/users/:id'));
 
       assert.equal(tree.lookup('/users', 'GET').success, false);
       assert.equal(tree.lookup('/users/1/extra', 'GET').success, false);
+    });
+
+    it('registration order does not affect param extraction', () => {
+      // Insert param route before static — priority must still favour static
+      const tree = new RadixTree();
+      tree.insert(makeRoute('GET', '/users/:id'));
+      tree.insert(makeRoute('GET', '/users/me'));
+
+      const meResult = tree.lookup('/users/me', 'GET');
+      assert.equal(meResult.success, true);
+      if (meResult.success) assert.deepEqual(meResult.params, {});
+
+      const idResult = tree.lookup('/users/42', 'GET');
+      assert.equal(idResult.success, true);
+      if (idResult.success) assert.deepEqual(idResult.params, { id: '42' });
     });
   });
 
@@ -152,13 +219,26 @@ describe('RadixTree', () => {
       assert.equal(profileResult.success, true);
       if (profileResult.success) {
         assert.equal(profileResult.route, profileRoute);
-        assert.deepEqual(profileResult.params, {}); // no params on static match
+        assert.deepEqual(profileResult.params, {});
       }
 
       const paramResult = tree.lookup('/users/42', 'GET');
       assert.equal(paramResult.success, true);
       if (paramResult.success) {
         assert.deepEqual(paramResult.params, { id: '42' });
+      }
+    });
+
+    it('falls back to param when static child does not lead to a route', () => {
+      // /users/profile/x has no route — should backtrack to /users/:id/x
+      const tree = new RadixTree();
+      tree.insert(makeRoute('GET', '/users/:id/settings'));
+
+      // 'profile' is not a registered static child — must use :id
+      const result = tree.lookup('/users/profile/settings', 'GET');
+      assert.equal(result.success, true);
+      if (result.success) {
+        assert.deepEqual(result.params, { id: 'profile' });
       }
     });
   });
@@ -171,6 +251,15 @@ describe('RadixTree', () => {
       const result = tree.lookup('/files/a/b/c', 'GET');
       assert.equal(result.success, true);
       if (result.success) assert.equal(result.params['*'], 'a/b/c');
+    });
+
+    it('matches a single remaining segment', () => {
+      const tree = new RadixTree();
+      tree.insert(makeRoute('GET', '/files/*'));
+
+      const result = tree.lookup('/files/readme.md', 'GET');
+      assert.equal(result.success, true);
+      if (result.success) assert.equal(result.params['*'], 'readme.md');
     });
   });
 
@@ -213,8 +302,28 @@ describe('RadixTree', () => {
       const tree = new RadixTree();
       tree.insert(makeRoute('GET', '/users'));
 
-      // trailing slash normalizes to same segments
       assert.equal(tree.lookup('/users/', 'GET').success, true);
+    });
+
+    it('does not confuse sibling static segments', () => {
+      const tree = new RadixTree();
+      tree.insert(makeRoute('GET', '/users'));
+      tree.insert(makeRoute('GET', '/posts'));
+
+      assert.equal(tree.lookup('/users', 'GET').success, true);
+      assert.equal(tree.lookup('/posts', 'GET').success, true);
+      assert.equal(tree.lookup('/comments', 'GET').success, false);
+    });
+
+    it('handles many methods on the same param route', () => {
+      const tree = new RadixTree();
+      const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
+      for (const m of methods) tree.insert(makeRoute(m, '/items/:id'));
+
+      for (const m of methods) {
+        const r = tree.lookup('/items/1', m);
+        assert.equal(r.success, true, `Expected success for ${m}`);
+      }
     });
   });
 });

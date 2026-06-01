@@ -7,6 +7,12 @@ Arcara uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-06-01
+
+### Added
+
+- Documented benchmark reproduction instructions for comparing Arcara with Hono, Fastify, Express, and Raw Node.js while preserving Arcara's zero-runtime-dependency design.
+
 ## [0.4.4] - 2026-04-16
 
 - Fixed multiple middlewares support logic

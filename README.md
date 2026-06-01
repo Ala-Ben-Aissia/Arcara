@@ -44,6 +44,25 @@ augment Node request/response types:
 npm install -D @types/node
 ```
 
+## Benchmarking
+
+Arcara remains a zero-runtime-dependency framework. If you want to run the comparative benchmark against Fastify, Hono, Express, and Raw Node.js, you must install those benchmark dependencies either in the `bench/` workspace or globally.
+
+Install locally in the benchmark directory:
+
+```bash
+cd bench
+pnpm install
+```
+
+Or install the runtime packages globally:
+
+```bash
+pnpm add -g autocannon fastify hono @hono/node-server express
+```
+
+`Raw Node.js` itself does not require an additional framework package, but the benchmark runner does rely on `autocannon` plus the tested frameworks.
+
 ---
 
 ## Quick Start
@@ -240,6 +259,7 @@ res.send('plain text'); // → text/plain
 res.send('<h1>Hello</h1>'); // → text/html (auto-detected)
 res.send(buffer); // → application/octet-stream or sniffed MIME
 res.send({ key: 'value' }); // → application/json
+// NOTE: You'll have a second optional param to manually specify the content-type
 
 res.status(204);
 ```
